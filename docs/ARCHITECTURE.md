@@ -165,9 +165,15 @@ toward a bank's edge, orbital shells follow it, and mist, overcast light and mur
 bank, so clear lowlands get full sun. The same field is meant to carry the oceans (banks over warm
 water). From orbit the cloud pass hands the ground its opacity through the alpha channel
 (> 0 cloud-front distance, −1…0 star visibility, −3…−2 shell opacity) so cloud edges blend softly.
-In the shell region the colour is the cloud's own (black where there is none), so ground and water
-composite it premultiplied, texel by texel (`shellOver` in `render/glsl.ts`); blending toward a filtered
-colour pulled in the black and turned every faint cumulus puff into a dark dot.
+In the shell region the colour is the cloud's own, so ground and water composite it premultiplied, texel
+by texel (`shellOver` in `render/glsl.ts`); blending toward a filtered colour pulled in the clear texels'
+colour and turned every faint cumulus puff into a dark dot. Where the shell is clear the cloud pass still
+writes the shell's colour without its opacity (`gShellCol`, the deck as it would look there), never black:
+the shell is one sphere at −46 m but the ground is ~600 m lower, so at a grazing angle a ray crosses the
+shell kilometres before it reaches the ground (from 6 km, rays crossing 13–22 km out land 1.4–5 km further
+on). Just short of a bank's near edge the ray passes through a gap while its ground lies under the bank, and
+the ground's `seaMist` (deck between eye and ground) swallows it into `bg` — which used to be black there
+(the "black slits along cloud edges"). Now those rays take the deck's colour and read as the bank's edge.
 Distant land gets a slow biome tint (golden grassland, woodland greens, heather).
 
 **Water.** One sea level, `WATER` −690 m. The terrain function carves ocean basins where `seaField`

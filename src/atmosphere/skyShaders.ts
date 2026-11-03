@@ -275,6 +275,7 @@ vec4 marchClouds(vec3 rd, float jitter) {
 }
 
 /* ---- cheap cloud shells for high-altitude and orbital views ---- */
+vec3 gShellCol = vec3(0.0);   // the shell's own colour along this ray, also where it is clear
 vec4 shellClouds(vec3 rd) {
   vec2 s = shell(rd, SEA_TOP - 14.0);
   if (!(s.x > 0.0)) return vec4(0.0, 0.0, 0.0, 1.0);
@@ -301,6 +302,7 @@ vec4 shellClouds(vec3 rd) {
   float dist = s.x;
   float hz = 1.0 - exp(-dist * 0.00019 * airDensity(uCamAlt, SEA_TOP));
   col = mix(col, hor * 0.95, hz);
+  gShellCol = col;
   return vec4(col * a, 1.0 - a);
 }
 
@@ -349,7 +351,10 @@ void main() {
   // from high up: the shell's opacity over the ground, encoded below the star range (−2 … −3)
   if (uShellK > 0.5 && shell(rd, SEA_BASE - 520.0).x > 0.0) {   // only where the ray surely reaches the ground below
     aOut = -2.0 - (1.0 - cl.a);
-    col = cl.a < 0.999 ? cl.rgb / (1.0 - cl.a) : vec3(0.0);   // the cloud's own colour; the ground below shows through (1 − a)
+    // the cloud's own colour; the ground below shows through (1 − a). Where the shell is clear it is still the
+    // deck's colour, never black: at a grazing angle the ground lies kilometres past the shell crossing, so ground
+    // under a bank shows behind a gap at the bank's edge, and its mist pulls this colour in (the black slits)
+    col = cl.a < 0.999 ? cl.rgb / (1.0 - cl.a) : gShellCol;
   }
   // blend with last frame, reprojected by view direction (clouds are far away)
   vec4 pc = uPrevVP * vec4(uLtoPF * rd, 1.0);
