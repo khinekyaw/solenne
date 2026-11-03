@@ -1,0 +1,8 @@
+node_modules
+dist
+.DS_Store
+__pycache__/
+# Blender build outputs (regenerate with art/wren/build_wren.py and render_wren.py)
+art/wren/out/
+art/wren/renders/
+.claude/settings.local.json

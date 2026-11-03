@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Solenne</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@1,500;1,600&family=Manrope:wght@400;500;600&display=swap">
+</head>
+<body>
+<canvas id="gl" tabindex="0" aria-label="Solenne, a meadow above a sea of clouds"></canvas>
+<div class="dot" id="dot" hidden></div>
+
+<div class="intro" id="intro">
+  <div class="card">
+    <p class="eyebrow">One million years later</p>
+    <h1>Solenne</h1>
+    <p class="lede">The jump went wrong. When the Wren finally set down, home was all wind and meadow above a sea of clouds. No one is left. Only the old cottage on the hill still stands.</p>
+    <dl class="keys desk-only">
+      <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>Walk</dd>
+      <dt><kbd>Mouse</kbd></dt><dd>Look around</dd>
+      <dt><kbd>Shift</kbd></dt><dd>Run</dd>
+      <dt><kbd>Space</kbd></dt><dd>Jump (rise while flying)</dd>
+      <dt><kbd>F</kbd></dt><dd>Free flight on/off · <kbd>C</kbd> descend</dd>
+      <dt><kbd>M</kbd></dt><dd>Sound on/off</dd>
+      <dt><kbd>E</kbd></dt><dd>Use the telescope by the cottage</dd>
+      <dt><kbd>P</kbd></dt><dd>View the whole planet</dd>
+      <dt><kbd>Esc</kbd></dt><dd>Release the mouse</dd>
+    </dl>
+    <p class="lede touch-only">Drag on the left side to walk and on the right side to look around.</p>
+    <button class="enter" id="enter" disabled>Waking Solenne…</button>
+    <p class="note" id="note">Sound starts when you step outside; headphones recommended. Lower the quality in Settings if it stutters.</p>
+  </div>
+</div>
+
+<div class="topbar">
+  <button class="chip icon" id="soundBtn" aria-label="Mute sound" title="Sound (M)">
+    <svg id="icoOn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4.5 4.5 0 0 1 0 6"/><path d="M18 6.5a8 8 0 0 1 0 11"/></svg>
+    <svg id="icoOff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" hidden><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/></svg>
+  </button>
+  <button class="chip" id="chip" aria-expanded="false" aria-controls="panel">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></svg>
+    Settings
+  </button>
+</div>
+
+<aside class="panel" id="panel" hidden>
+  <p class="group">View</p>
+  <div class="row">
+    <button class="wide" id="planetBtn">View the whole planet <kbd>P</kbd></button>
+  </div>
+  <p class="group">Weather</p>
+  <div class="row">
+    <div class="row-head"><span class="label" id="wxLabel">Sky</span><span class="val" id="wxNow">Sunny</span></div>
+    <div class="seg" id="wxSeg" role="group" aria-labelledby="wxLabel">
+      <button data-wx="dynamic" aria-pressed="true">Dynamic</button>
+      <button data-wx="sunny" aria-pressed="false">Sunny</button>
+      <button data-wx="cloudy" aria-pressed="false">Cloudy</button>
+      <button data-wx="rain" aria-pressed="false">Rain</button>
+      <button data-wx="storm" aria-pressed="false">Storm</button>
+      <button data-wx="fog" aria-pressed="false">Fog</button>
+    </div>
+  </div>
+  <p class="group">Time</p>
+  <div class="row">
+    <div class="row-head"><label class="label" for="tod">Time of day</label><span class="val" id="todVal">13:54</span></div>
+    <input type="range" id="tod" min="0" max="24" step="0.05" value="13.9">
+  </div>
+  <div class="row">
+    <span class="label" id="tsLabel">Time scale</span>
+    <div class="seg seg5" id="tsSeg" role="group" aria-labelledby="tsLabel">
+      <button data-ts="0" aria-pressed="false">Pause</button>
+      <button data-ts="1" aria-pressed="false">1×</button>
+      <button data-ts="10" aria-pressed="true">10×</button>
+      <button data-ts="60" aria-pressed="false">60×</button>
+      <button data-ts="600" aria-pressed="false">600×</button>
+    </div>
+  </div>
+  <div class="row">
+    <div class="row-head"><span class="label" id="seasonLabel">Season</span><span class="val" id="dayVal">Spring, day 1</span></div>
+    <div class="seg seg4" id="seasonSeg" role="group" aria-labelledby="seasonLabel">
+      <button data-season="0" aria-pressed="true">Spring</button>
+      <button data-season="1" aria-pressed="false">Summer</button>
+      <button data-season="2" aria-pressed="false">Autumn</button>
+      <button data-season="3" aria-pressed="false">Winter</button>
+    </div>
+  </div>
+  <p class="group">Meadow</p>
+  <div class="row">
+    <div class="row-head"><label class="label" for="wind">Wind</label><span class="val" id="windVal">Breeze</span></div>
+    <input type="range" id="wind" min="0" max="100" step="1" value="55">
+  </div>
+  <div class="row">
+    <div class="row-head"><label class="label" for="grassDensity">Grass density</label><span class="val" id="densityVal">—</span></div>
+    <input type="range" id="grassDensity" min="20" max="200" step="5" value="70">
+  </div>
+  <div class="row">
+    <div class="row-head"><label class="label" for="grassHeight">Grass height</label><span class="val" id="heightVal">≈ 34 cm</span></div>
+    <input type="range" id="grassHeight" min="40" max="220" step="5" value="80">
+  </div>
+  <p class="group">Sound</p>
+  <div class="row">
+    <div class="row-head"><label class="label" for="natureVol">Volume</label><span class="val" id="natureVal">70%</span></div>
+    <input type="range" id="natureVol" min="0" max="100" step="1" value="70">
+  </div>
+  <div class="row" id="voiceRow">
+    <div class="row-head"><span class="label" id="voiceLabel">Halden's voice</span><span class="val" id="voiceVal">Automatic</span></div>
+    <div class="seg seg2" id="voiceSeg" role="group" aria-labelledby="voiceLabel">
+      <button data-voice="on" aria-pressed="true">On</button>
+      <button data-voice="off" aria-pressed="false">Off</button>
+    </div>
+    <select class="select" id="voiceSel" aria-label="Voice for Halden"></select>
+  </div>
+  <p class="group">Rendering</p>
+  <div class="row">
+    <span class="label" id="qLabel">Quality</span>
+    <div class="seg" id="qSeg" role="group" aria-labelledby="qLabel">
+      <button data-q="low" aria-pressed="false">Low</button>
+      <button data-q="medium" aria-pressed="true">Medium</button>
+      <button data-q="high" aria-pressed="false">High</button>
+    </div>
+  </div>
+  <div class="stats"><span id="fps">— fps</span><span id="alt">Ground</span></div>
+</aside>
+
+<div class="hint" id="hint" hidden>
+  <span class="mode" id="modeLabel">Walking</span>
+  <span class="clock" id="clock">13:54</span>
+  <span class="desk-only"><kbd>F</kbd> fly</span>
+  <span class="desk-only"><kbd>M</kbd> sound</span>
+  <span class="desk-only"><kbd>Esc</kbd> menu</span>
+</div>
+
+<div class="prompt" id="prompt" hidden><kbd>E</kbd> Look through the telescope</div>
+<div class="scope" id="scope" hidden>
+  <div class="scope-circles" id="scopeCircles" aria-label="Where the telescope points">Alt 0° · Az 0° N</div>
+  <div class="scope-guide" id="scopeGuide" aria-label="Sky guide"></div>
+  <div class="scope-mark" aria-hidden="true"><i></i><i></i></div>
+  <div class="scope-label" id="scopeLabel" hidden aria-live="polite">
+    <span class="scope-name" id="scopeName"></span>
+    <span class="scope-about" id="scopeAbout"></span>
+    <span class="scope-meta" id="scopeMeta"></span>
+  </div>
+  <div class="scope-bar">
+    <span class="mode">Telescope</span><span class="clock" id="scopeMag">×17</span>
+    <span class="desk-only">Mouse or arrows to aim · <kbd>Shift</kbd> faster · scroll to zoom · <kbd>1</kbd>–<kbd>8</kbd> go to · <kbd>E</kbd> step back</span>
+  </div>
+</div>
+<div class="you" id="youMark" hidden aria-hidden="true"><i></i><span>You</span></div>
+<div class="viewbar" id="viewbar" hidden>
+  <span class="mode">Planet view</span>
+  <span class="desk-only">Drag to turn · scroll to zoom · <kbd>P</kbd> to return</span>
+  <span class="touch-only">Drag to turn · pinch to zoom</span>
+  <button class="enter small" id="backBtn">Back to Solenne</button>
+</div>
+
+<div class="say" id="say" hidden><span class="who" id="sayWho">Halden</span><span id="sayLine"></span></div>
+
+<div class="joy" id="joy" hidden><i id="joyKnob"></i></div>
+<div class="touch-btns touch-only" id="touchBtns" hidden>
+  <button id="tJump">Jump</button>
+  <button id="tFly" aria-pressed="false">Fly</button>
+</div>
+
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>
