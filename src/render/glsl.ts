@@ -163,7 +163,7 @@ float cloudFrontK(sampler2D bg, vec2 fragXY, vec2 res, float dist) {
   return mix(mix(o.x, o.y, f.x), mix(o.z, o.w, f.x), f.y) * smoothstep(500.0, 1000.0, dist);
 }
 // the orbital cloud shell over a point (alpha −2 … −3): premultiplied colour + opacity. Each texel is
-// weighted by its own opacity, so the black written where there is no cloud never darkens the ground
+// weighted by its own opacity, so the colour written where there is no cloud never reaches the ground
 // (blending to a filtered colour turned every faint cumulus puff into a dark dot)
 vec4 shellOver(sampler2D bg, vec2 fragXY, vec2 res) {
   ivec2 sz = textureSize(bg, 0);

@@ -171,8 +171,15 @@ flight.**
       shell colour that included the black written where there is no cloud, so every faint cumulus puff
       became a dark 2×2 dot. Now premultiplied per texel (`shellOver`); faint puffs show as white wisps.
       Measured at 30 km: pixels the shell darkens 3080 → 187
-- [ ] Black slits along cloud edges at the horizon from a few km up: the cloud pass writes black for "no
-      cloud" in the shell region, and it shows wherever the terrain there isn't drawn (beyond the far plane)
+- [x] Black slits along cloud edges at the horizon from a few km up (2026-11-03). Not the far plane: terrain
+      and water are drawn under every slit (painted solid, nothing was missing). Parallax between the shell
+      sphere (−46 m) and the ground (~−640 m): a ray crossing a gap just short of a bank's near edge lands
+      1.4–5 km further on, under the bank (from 6 km: crossings 13–22 km out, 5–22° grazing), so the ground's
+      `seaMist` swallowed it into `bg`, the black written for clear shell texels. The cloud pass now writes the
+      shell's own colour there (`gShellCol`), so the slit reads as the bank's edge. Measured at 6 km, noon:
+      dark pixels 353 → 0 (dusk 433 → 0, planet view 23 → 0, 12 km 424 → 37, all deep-blue sky in the top
+      corners); outside the horizon band the pixels it changes match the frame-to-frame baseline. Cliff edge
+      and under a bank are unchanged (shell branch inactive below ~3 km). `docs/images/slits-*`
 - [ ] Rivers that flow downhill (sloped water surface, currents) instead of sea-level valleys
 - [ ] Waterfalls on other highlands; spray mist where they land; water reflections of terrain
 - [ ] Underwater view (diving) and wet footsteps
