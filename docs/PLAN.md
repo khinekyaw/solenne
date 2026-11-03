@@ -162,6 +162,11 @@ flight.**
 - [x] Fix towers popping in while flying (march ran out of steps ~1.5 km out) and stair-stepped cloud edges over distant land
 - [x] Mountains showing through clouds in front of them when flying low (front at T < 0.75, compositing
       from 500 m); verified 2026-11-03: towers cover the massif, no speckles on the plateau
+- [x] Cumulus cutting through mountains (2026-11-03): the 340 m layer ignored the ground and highland
+      peaks reach ~1.4 km, so puffs sat inside ridges with speckled edges and sharp shadows. A 6×512²
+      highest-ground atlas now fades the layer out where the ground reaches 120–240 m. Verified on the
+      south-east massif with the same cloud offset (puffs in the ridge → clean ridge, cumulus above the
+      plain); the home sky is unchanged (coverage factor 1.0 within 3 km of the cottage)
 - [x] Black dots over the land in the planet view (2026-11-03): ground and water blended toward a filtered
       shell colour that included the black written where there is no cloud, so every faint cumulus puff
       became a dark 2×2 dot. Now premultiplied per texel (`shellOver`); faint puffs show as white wisps.

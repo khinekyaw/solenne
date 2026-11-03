@@ -1,18 +1,20 @@
 import * as THREE from 'three';
-import { GRID, LAND_RES } from '../config';
+import { GRID, LAND_RES, LAND_TOP_RES } from '../config';
 import { setRegionGrid } from './heights';
 
 /* =========================================================================
    Spawn-region textures from the terrain worker: heightfield (grass, rain),
-   masks + baked terrain shadow, and the land-mask atlas for the clouds.
-   The shadow is re-baked in the worker whenever the sun has moved a little.
+   masks + baked terrain shadow, and the land-mask and highest-ground atlases
+   for the clouds. The shadow is re-baked in the worker whenever the sun has
+   moved a little.
    ========================================================================= */
-export type RegionData = { H: Float32Array; tdata: Uint8Array; land: Uint8Array };
+export type RegionData = { H: Float32Array; tdata: Uint8Array; land: Uint8Array; top: Uint8Array };
 
 export class Region {
   heightTex: THREE.DataTexture;
   terrainTex: THREE.DataTexture;
   landTex: THREE.DataTexture;
+  topTex: THREE.DataTexture;
   private lastSun = new THREE.Vector3(0, -2, 0);
   private seq = 0;
   private busy = false;
@@ -28,6 +30,9 @@ export class Region {
     this.landTex = new THREE.DataTexture(d.land, LAND_RES * 6, LAND_RES, THREE.RGFormat, THREE.UnsignedByteType);   // r land, g cloud-sea cover
     this.landTex.minFilter = this.landTex.magFilter = THREE.LinearFilter;
     this.landTex.needsUpdate = true;
+    this.topTex = new THREE.DataTexture(d.top, LAND_TOP_RES * 6, LAND_TOP_RES, THREE.RedFormat, THREE.UnsignedByteType);   // highest ground nearby
+    this.topTex.minFilter = this.topTex.magFilter = THREE.LinearFilter;
+    this.topTex.needsUpdate = true;
     worker.addEventListener('message', (e) => {
       if (e.data.type !== 'shadow') return;
       this.busy = false;

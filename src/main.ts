@@ -128,7 +128,7 @@ async function boot() {
   weatherTex.wrapS = weatherTex.wrapT = THREE.RepeatWrapping;
   weatherTex.magFilter = THREE.LinearFilter; weatherTex.minFilter = THREE.LinearMipmapLinearFilter;
   weatherTex.generateMipmaps = true; weatherTex.needsUpdate = true;
-  shared.uWeather.value = weatherTex; shared.uLand.value = region.landTex;
+  shared.uWeather.value = weatherTex; shared.uLand.value = region.landTex; shared.uLandTop.value = region.topTex;
 
   ui.status('Lighting the planets…');
   const maps = await mapsP;

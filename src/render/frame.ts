@@ -28,7 +28,7 @@ export const shared = {
   uTime: { value: 0 },
   uCloudOff: { value: new THREE.Vector3() }, uCover: { value: 0 }, uDark: { value: 0 }, uFog: { value: 0 }, uWet: { value: 0 }, uFlash: { value: 0 }, uNight: { value: 0 }, uMoonlit: { value: 0 },
   uWindPhase: { value: 0 }, uSwayPhase: { value: 0 },
-  uWeather: { value: null as THREE.Texture | null }, uLand: { value: null as THREE.Texture | null },
+  uWeather: { value: null as THREE.Texture | null }, uLand: { value: null as THREE.Texture | null }, uLandTop: { value: null as THREE.Texture | null },
   uWindDir: { value: new THREE.Vector2(0.86, 0.5).normalize() }, uWindStr: { value: 0.55 },
   uHShadow: { value: null as THREE.Texture | null }, uHShadowMat: { value: new THREE.Matrix4() },
   uHouseXf: { value: new THREE.Vector4(1e5, 1e5, 1, 0) }, uHouseRect: { value: new THREE.Vector4(0, 0, 0, 0) },

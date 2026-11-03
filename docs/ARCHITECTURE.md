@@ -29,7 +29,7 @@ src/
     solenne.ts            radius, gravity, cube faces, flat<->sphere mapping, sun/rotation frame
     heights.ts            spawn-region heightFn (prototype) + global terrain height function
     quadtree.ts           cube-sphere quadtree, LOD selection, horizon culling, chunk meshes
-    terrain.worker.ts     chunk meshes, region heightfield, shadow bake, land-mask cube map
+    terrain.worker.ts     chunk meshes, region heightfield, shadow bake, land-mask and highest-ground atlases
     terrainMaterial.ts    painterly ground shader (ported)
     region.ts             spawn-region textures (height, masks, shadow): clouds, cottage, terrain
     detail.ts             the moving detail region for grass, flowers and rain (rebuilt by a worker)
@@ -108,6 +108,14 @@ has to span metres to millions of km.
   the deck would converge into a wall at the horizon. It fades back to true shells by 3 km altitude.
   The cloud sea and towers stay curved (the sea horizon is ~3 km away from the plateau).
 - Towers avoid land via a 6×128² land-mask atlas (plus the prototype's plateau exclusion `R0`).
+- The cumulus layer (base 340 m) keeps clear of mountains: a 6×512² highest-ground atlas (~320 m
+  texels, `uLandTop`) holds the max of the sampled ground over each texel's 3×3 neighbourhood, so a
+  bilinear lookup never undercuts a nearby sample, and `nearCoverage` fades to nothing where it reaches
+  120–240 m. Cloud shadows and the orbital puffs use the same coverage. Highlands peak above the layer
+  (up to ~1.4 km) and the clouds used to cut through them, with speckled edges where the half-res
+  front distances met the slope. The first try put the channel in the 128² land atlas: its 1.3 km
+  texels plus the 3×3 spread cleared the sky from 1 km north-east of the cottage. Only highland texels
+  (coarse max > 40 m) are sampled finely, which adds ~0.3 s to the worker's boot bake.
 - The cloud pass writes the distance at which clouds become plainly visible (transmittance < 0.75)
   into its alpha; the ground shader fades into the cloud behind that distance, so towers correctly
   hide distant highlands. It applies beyond 500 m (full by 1 km). It used to start at 1.5 km and only

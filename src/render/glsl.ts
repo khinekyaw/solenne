@@ -1,4 +1,4 @@
-import { SEA_TOP, SEA_BASE, WATER, WORLD, GRID, PLANET_R, ATMO_H, LAND_RES } from '../config';
+import { SEA_TOP, SEA_BASE, WATER, WORLD, GRID, PLANET_R, ATMO_H, LAND_RES, LAND_TOP_RES, LAND_TOP } from '../config';
 import { FACE_DATA } from '../planet/faces';
 
 const f1 = (x: number) => x.toFixed(1);
@@ -35,6 +35,7 @@ uniform float uNight;
 uniform float uMoonlit;   // Lull's light on the night sky (phase × height)
 uniform sampler2D uWeather;
 uniform sampler2D uLand;
+uniform sampler2D uLandTop;
 #define SEA_TOP ${f1(SEA_TOP)}
 #define SEA_BASE ${f1(SEA_BASE)}
 #define WATER ${f1(WATER)}
@@ -45,6 +46,8 @@ uniform sampler2D uLand;
 #define PLANET_R ${f1(PLANET_R)}
 #define ATMO_H ${f1(ATMO_H)}
 #define LAND_RES ${f1(LAND_RES)}
+#define LAND_TOP_RES ${f1(LAND_TOP_RES)}
+#define LAND_TOP ${f1(LAND_TOP)}
 
 // ground lighting is deliberately soft: a gentle sun over a strong, cool skylight
 #define GROUND_SUN 0.4
@@ -84,12 +87,32 @@ vec4 wx2s(vec3 p, vec2 inv, vec2 o) {
   return r;
 }
 vec4 wx2(vec3 p, float s, vec2 o) { return wx2s(p, vec2(1.0 / s), o); }
+
+// atlases of the six cube faces side by side (res texels per face). uLand: r = highland above the
+// cloud sea, g = cloud-sea cover. uLandTop: highest ground nearby (conservative, so mountains never
+// poke through what it clears)
+const vec3 FN[6] = vec3[6](${vec3s(0)});
+const vec3 FU[6] = vec3[6](${vec3s(3)});
+const vec3 FV[6] = vec3[6](${vec3s(6)});
+vec2 atlasUV(vec3 d, float res) {
+  vec3 a = abs(d);
+  int fi = a.x >= a.y && a.x >= a.z ? (d.x > 0.0 ? 0 : 1) : (a.y >= a.z ? (d.y > 0.0 ? 2 : 3) : (d.z > 0.0 ? 4 : 5));
+  float dn = dot(d, FN[fi]);
+  vec2 uv = clamp(vec2(dot(d, FU[fi]), dot(d, FV[fi])) / dn * 0.5 + 0.5, 0.5 / res, 1.0 - 0.5 / res);
+  return vec2((float(fi) + uv.x) / 6.0, uv.y);
+}
+vec2 atlasAt(vec3 d) { return textureLod(uLand, atlasUV(d, LAND_RES), 0.0).rg; }
+float groundTopAt(vec3 d) { return textureLod(uLandTop, atlasUV(d, LAND_TOP_RES), 0.0).r * LAND_TOP; }
+
 // two weather layers drifting at different speeds and directions, so clouds grow, merge and fade
 float nearCoverage(vec3 pPF) {
-  pPF = normalize(pPF) * PLANET_R;
+  vec3 d = normalize(pPF);
+  pPF = d * PLANET_R;
   vec4 w = wx2(pPF + uCloudOff, 5600.0, vec2(0.37, 0.11));
   float w2 = wx2(pPF + vec3(-uCloudOff.z, 0.0, uCloudOff.x) * 0.6, 2600.0, vec2(0.71, 0.29)).g;
-  return smoothstep(0.71 - 0.53 * uCover, 0.9 - 0.38 * uCover, (w.b * 0.7 + w.r * 0.3) * 0.78 + w2 * 0.22);
+  float c = smoothstep(0.71 - 0.53 * uCover, 0.9 - 0.38 * uCover, (w.b * 0.7 + w.r * 0.3) * 0.78 + w2 * 0.22);
+  // none where the ground reaches up toward the cloud base: the layer would cut through the mountain
+  return c * smoothstep(NEAR_BASE - 100.0, NEAR_BASE - 220.0, groundTopAt(d));
 }
 // shadow of the cumulus layer at a planet-fixed point of altitude h
 float cloudShadowPF(vec3 pPF, float h) {
@@ -123,18 +146,6 @@ float seaMist(float h, float L) {
 }
 // grey murk in the still air under the clouds
 float murkAmount(float h, float L) { return (1.0 - exp(-L * 0.00032)) * smoothstep(SEA_BASE + 40.0, SEA_BASE - 40.0, max(uCamAlt, h)); }
-
-// atlas of the six cube faces side by side: r = highland above the cloud sea, g = cloud-sea cover
-const vec3 FN[6] = vec3[6](${vec3s(0)});
-const vec3 FU[6] = vec3[6](${vec3s(3)});
-const vec3 FV[6] = vec3[6](${vec3s(6)});
-vec2 atlasAt(vec3 d) {
-  vec3 a = abs(d);
-  int fi = a.x >= a.y && a.x >= a.z ? (d.x > 0.0 ? 0 : 1) : (a.y >= a.z ? (d.y > 0.0 ? 2 : 3) : (d.z > 0.0 ? 4 : 5));
-  float dn = dot(d, FN[fi]);
-  vec2 uv = clamp(vec2(dot(d, FU[fi]), dot(d, FV[fi])) / dn * 0.5 + 0.5, 0.5 / LAND_RES, 1.0 - 0.5 / LAND_RES);
-  return textureLod(uLand, vec2((float(fi) + uv.x) / 6.0, uv.y), 0.0).rg;
-}
 float landAt(vec3 d) { return atlasAt(d).r; }
 float seaCovAt(vec3 d) { return atlasAt(d).g; }
 

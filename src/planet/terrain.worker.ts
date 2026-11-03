@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
-import { PLANET_R, CHUNK_SEG, SEA_TOP, HALF, GRID, LAND_RES, WATER } from '../config';
-import { smoothstep } from '../core/math';
+import { PLANET_R, CHUNK_SEG, SEA_TOP, HALF, GRID, LAND_RES, LAND_TOP_RES, LAND_TOP, WATER } from '../config';
+import { clamp, smoothstep } from '../core/math';
 import { faceDirRaw, FACE_DATA, SPAWN_FACE } from './faces';
 import { computeRegionGrid, setRegionGrid, planetHeight, seaCover } from './heights';
 import { regionMasks, bakeShadow, grassMask, regionHeights } from './regionBake';
@@ -114,21 +114,36 @@ function buildWater(face: number, x0: number, z0: number, step: number, Hh: Floa
   return { wpos, wflat, wdepth, windex: new Uint16Array(idx) };
 }
 
-/* atlas of six cube faces side by side, two channels: r = highland above the cloud sea, g = cloud-sea cover */
+/* atlases of six cube faces side by side. land, two channels: r = highland above the cloud sea,
+   g = cloud-sea cover. top, 4× finer: highest ground near each point (0 … LAND_TOP m), so the
+   cumulus keeps clear of mountains without clearing the sky for kilometres around them */
 function landAtlas() {
-  const R = LAND_RES, out = new Uint8Array(6 * R * R * 2), d = [0, 0, 0];
-  for (let fi = 0; fi < 6; fi++) for (let y = 0; y < R; y++) for (let x = 0; x < R; x++) {
-    let m = -1e9;
-    for (const [ox, oy] of [[0.25, 0.25], [0.75, 0.25], [0.25, 0.75], [0.75, 0.75]]) {
-      const u = ((x + ox) / R) * 2 - 1, v = ((y + oy) / R) * 2 - 1;
-      m = Math.max(m, planetHeight(fi, u * PLANET_R, v * PLANET_R));
+  const R = LAND_RES, F = LAND_TOP_RES / LAND_RES, T = LAND_TOP_RES, TS = T + 2 * F, d = [0, 0, 0];
+  const land = new Uint8Array(6 * R * R * 2), top = new Uint8Array(6 * T * T), peak = new Float32Array(TS * TS);
+  const at = (fi: number, x: number, y: number) => planetHeight(fi, (x / R * 2 - 1) * PLANET_R, (y / R * 2 - 1) * PLANET_R);
+  for (let fi = 0; fi < 6; fi++) {
+    // with a ring one texel past the face edge (flat coords beyond it are the neighbouring face)
+    for (let y = -1; y <= R; y++) for (let x = -1; x <= R; x++) {
+      let m = -1e9;
+      for (const [ox, oy] of [[0.25, 0.25], [0.75, 0.25], [0.25, 0.75], [0.75, 0.75]]) m = Math.max(m, at(fi, x + ox, y + oy));
+      // only ground near the cumulus base matters, and it only rises out of highland: sample that
+      // finely (texels skipped here peak below ~160 m)
+      for (let j = 0; j < F; j++) for (let i = 0; i < F; i++)
+        peak[((y + 1) * F + j) * TS + (x + 1) * F + i] = m > 40 ? at(fi, x + (i + 0.5) / F, y + (j + 0.5) / F) : m;
+      if (x < 0 || y < 0 || x >= R || y >= R) continue;
+      faceDirRaw(fi, ((x + 0.5) / R * 2 - 1) * PLANET_R, ((y + 0.5) / R * 2 - 1) * PLANET_R, d);
+      const k = (y * 6 * R + fi * R + x) * 2;
+      land[k] = Math.round(255 * smoothstep(SEA_TOP - 60, SEA_TOP + 10, m));
+      land[k + 1] = Math.round(255 * seaCover(d[0], d[1], d[2]));
     }
-    faceDirRaw(fi, ((x + 0.5) / R * 2 - 1) * PLANET_R, ((y + 0.5) / R * 2 - 1) * PLANET_R, d);
-    const i = (y * 6 * R + fi * R + x) * 2;
-    out[i] = Math.round(255 * smoothstep(SEA_TOP - 60, SEA_TOP + 10, m));
-    out[i + 1] = Math.round(255 * seaCover(d[0], d[1], d[2]));
+    // max over the 3×3 neighbourhood: a bilinear lookup then never undercuts the samples around it
+    for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) {
+      let h = -1e9;
+      for (let b = 0; b < 3; b++) for (let a = 0; a < 3; a++) h = Math.max(h, peak[(y + F - 1 + b) * TS + x + F - 1 + a]);
+      top[y * 6 * T + fi * T + x] = Math.round(255 * clamp(h / LAND_TOP, 0, 1));
+    }
   }
-  return out;
+  return { land, top };
 }
 
 let shadowBuf: Uint8Array | null = null;
@@ -140,9 +155,9 @@ ctx.onmessage = (e: MessageEvent) => {
     setRegionGrid(H);
     const tdata = regionMasks();
     shadowBuf = new Uint8Array(GRID * GRID);
-    const land = landAtlas();
+    const { land, top } = landAtlas();
     const Hc = H.slice();
-    ctx.postMessage({ type: 'region', H: Hc, tdata, land }, [Hc.buffer, tdata.buffer, land.buffer]);
+    ctx.postMessage({ type: 'region', H: Hc, tdata, land, top }, [Hc.buffer, tdata.buffer, land.buffer, top.buffer]);
   } else if (m.type === 'chunk') {
     const c = buildChunk(m.face, m.x0, m.z0, m.size);
     const tr: Transferable[] = [c.pos.buffer, c.nor.buffer, c.flat.buffer, c.info.buffer, c.index.buffer];

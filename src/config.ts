@@ -47,3 +47,5 @@ export const QUALITY: Record<string, Quality> = {
 
 export const isTouch = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches && !matchMedia('(pointer: fine)').matches;
 export const LAND_RES = 128;                 // land-mask atlas texels per cube face
+export const LAND_TOP_RES = LAND_RES * 4;    // highest-ground atlas texels per cube face (~320 m)
+export const LAND_TOP = 2000;                // m, range of the highest-ground atlas
