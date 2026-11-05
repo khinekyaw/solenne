@@ -125,7 +125,7 @@ has to span metres to millions of km.
   The cloud sea and towers stay curved (the sea horizon is ~3 km away from the plateau).
 - *Cloud amount* (Settings → Weather → Clouds, `settings.clouds` → `uClouds` 0–1): `cloudAmt(clear, def,
   proto)` in `glsl.ts` moves the coverage thresholds and column heights of the cumulus (`nearCoverage`) and
-  the towers (`towerCov`) from a clear sky (0) through the game's sparse default (0.5) to the prototype's
+  the towers (`towerCov`) from a clear sky (0) through the game's sparse sky (0.5; the default slider is 0.4) to the prototype's
   own values (1: towers from weather 0.47 and up to 1.4 km). Cloud shadows and the orbital puffs follow;
   weather `uCover` still adds on top. The showcase follows it too (its weather is forced fair, its amount of cloud is the player's;
   it was approved at 0.5).

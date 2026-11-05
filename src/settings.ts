@@ -2,10 +2,10 @@ import { QUALITY, isTouch } from './config';
 
 export type WeatherMode = 'dynamic' | 'sunny' | 'cloudy' | 'rain' | 'storm' | 'fog';
 export const settings = {
-  v: 2,
-  wind: 55, grassDensity: 70, grassHeight: 80, natureVol: 70, muted: false,
+  v: 3,
+  wind: 55, grassDensity: 20, grassHeight: 40, natureVol: 70, muted: false,
   weather: 'dynamic' as WeatherMode,
-  clouds: 50,         // cloud amount: 0 clear, 50 the default sky, 100 the prototype's towering cumulus
+  clouds: 40,         // cloud amount: 0 clear, 50 the old default sky, 100 the prototype's towering cumulus
   quality: isTouch ? 'low' : 'medium',
   voice: true,        // Halden speaks his lines (browser speech synthesis)
   music: true,        // the showcase's quiet pad (off when you lay your own music over a recording)
@@ -19,8 +19,8 @@ const STORE_KEY = 'solenne-settings-v1';
 try {
   const saved = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
   if (saved && typeof saved === 'object') {
-    // v2 lowered the grass defaults: older saves keep everything else
-    if (saved.v !== 2) { delete saved.grassDensity; delete saved.grassHeight; saved.v = 2; }
+    // v3 lowered the grass defaults to the sliders' minimum and the clouds to 40: older saves keep everything else
+    if (saved.v !== 3) { delete saved.grassDensity; delete saved.grassHeight; delete saved.clouds; saved.v = 3; }
     const s = settings as Record<string, unknown>;
     for (const k of Object.keys(settings)) if (k in saved && typeof saved[k] === typeof s[k]) s[k] = saved[k];
   }

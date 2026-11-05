@@ -429,6 +429,9 @@ A short film of the current world in the game's own renderer, peaceful and paint
       cottage at 0, 50 and 100, and toward the sea at 100 (tall towers like the prototype); 29.3 → 28.0 fps
       on Medium at 100; no console errors. The showcase follows it too (user's pick): every shot checked at 100;
       home matches the prototype's towering sky, the edge shot's sunset is more overcast than at 50
+- [x] New defaults (user request, 2026-11-05): grass density 20 and height 40 (the sliders' minimum), Clouds 40;
+      settings v3 resets those three in older saves. Verified in the browser: a v2 save with Clouds 100 loads as
+      40 / 63k blades / ≈ 17 cm, no console errors
 - [ ] Rivers that flow downhill (sloped water surface, currents) instead of sea-level valleys
 - [ ] Waterfalls on other highlands; spray mist where they land; water reflections of terrain
 - [ ] Underwater view (diving) and wet footsteps
