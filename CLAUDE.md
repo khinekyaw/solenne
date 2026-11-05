@@ -34,7 +34,15 @@ A quiet exploration game (Vite + TypeScript + three.js **0.160**, WebGL2). Start
 Use `window.solenne` (see ARCHITECTURE §6): e.g. `solenne.teleport(398, 100, -30, 2)` (cliff edge),
 `solenne.altitude(60000)` (orbit), `solenne.setTod(22.5)` (night), `solenne.look('Orrin'); solenne.fov(2)`
 (inspect a planet), `solenne.scope('Lull', 4)` (look through the telescope), `solenne.nextEclipse(0.8)`,
-`solenne.board()` (foot of the Wren's ramp), `solenne.wrenView(30, 1)` (three-quarter view of the Wren).
+`solenne.board()` (foot of the Wren's ramp), `solenne.wrenView(30, 1)` (three-quarter view of the Wren),
+`solenne.wrenDoor()` (fold the ramp-door shut / lower it), `solenne.helm()` (take the Wren's helm; then
+`simulate()` with keys dispatched as `KeyboardEvent`s on `window` to fly: Space lifts off, L lands),
+`solenne.scope('Seren', 3); solenne.solarFilter(true); solenne.flare(true)` (the sun in hydrogen-alpha, an
+eruption near the limb; `sunNow()` reports its activity). `telescope.point(dirL)` re-aims for close-ups.
+Space (M7): after `solenne.helm()` and lift-off, `solenne.flight.target = 3` (Lull) and a `KeyG` keydown run the
+autopilot; `solenne.simulate(1, 1/20)` in a loop flies it (Lull in ~100 s, Verran ~150 s). `flight.toSpace()` plus
+setting `rI`/`qI` places her anywhere; `solenne.sysMap` is the map.
+Screenshots of the pane can lag a capture behind: render frames, wait a second, and take a second one.
 Input is gated until "Click to begin". When the Browser pane is hidden the animation loop pauses: step
 frames with `solenne.render()` instead (and `await` a few seconds of them after a teleport so terrain
 chunks from the worker arrive).

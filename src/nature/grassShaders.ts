@@ -20,6 +20,7 @@ uniform float uInner;
 uniform float uWidthS;
 uniform float uHeightS;
 uniform vec3 uCamFwd;
+uniform vec4 uWash;
 varying float vT;
 varying vec3 vWorld;
 varying vec3 vNormal;
@@ -74,6 +75,10 @@ void main() {
   float g = gustAt(xz);
   float bendW = windBend(xz, g, r3.z * 6.2831853);
   vec2 B = fwd * mix(0.08, 0.5, r3.x) + uWindDir * bendW;
+  // the Wren's downwash: blades pressed out from under her, fluttering
+  vec2 wd = xz - uWash.xy;
+  float wl = length(wd), wk = uWash.z * smoothstep(uWash.w, uWash.w * 0.2, wl);
+  B += wd / max(wl, 0.4) * wk * (1.0 + 0.3 * sin(uTime * 19.0 + r3.z * 6.2831853 - wl * 1.7));
   float bl = length(B);
   if (bl > 1.25) B *= 1.25 / bl;
 

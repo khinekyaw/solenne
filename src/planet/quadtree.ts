@@ -6,8 +6,11 @@ import { pfMatrix } from '../render/frame';
 /* =========================================================================
    Cube-sphere quadtree. Six root nodes (one per face, flat coords ±R);
    a node splits when the camera is within SPLIT_K × its size. A node only
-   hands over to its children once all four have meshes, so there are no
-   holes while chunks stream in from the workers.
+   hands over to its children once all four have meshes, and merging back
+   keeps the children until the node's own mesh has come; a node that has
+   just come over the horizon stays empty until its mesh arrives instead of
+   failing its branch. So there are no holes (or coarse flashes) while
+   chunks stream in from the workers.
    ========================================================================= */
 type ChunkMsg = { id: number; pos: Float32Array; nor: Float32Array; flat: Float32Array; info: Float32Array; index: Uint16Array; center: number[]; radius: number; hMin: number; hMax: number;
   wpos?: Float32Array; wflat?: Float32Array; wdepth?: Float32Array; windex?: Uint16Array };
@@ -21,6 +24,8 @@ class Node {
   hMax = 1700;
   size3: number;
   used = 0;
+  culled = false;     // beyond the horizon last time it was looked at
+  revealed = -1e9;    // the frame it came over the horizon
   constructor(public id: number, public face: number, public level: number, public x0: number, public z0: number, public size: number) {
     flatToPF(face, x0 + size / 2, 0, z0 + size / 2, this.center);
     const a = flatToPF(face, x0, 0, z0), b = flatToPF(face, x0 + size, 0, z0 + size);
@@ -29,6 +34,8 @@ class Node {
   }
 }
 
+/** how eagerly nodes split (the video export asks for finer terrain further out) */
+export const lod = { k: SPLIT_K };
 const R_MIN = PLANET_R - 780;   // below the deepest lowland
 const horizonDist = (r: number) => Math.sqrt(Math.max(r * r - R_MIN * R_MIN, 0));
 
@@ -95,11 +102,12 @@ export class Quadtree {
   }
   private wantSplit(n: Node, cam: THREE.Vector3) {
     if (n.level >= MAX_LEVEL) return false;
-    return n.center.distanceTo(cam) - n.radius * 0.5 < SPLIT_K * n.size3;
+    return n.center.distanceTo(cam) - n.radius * 0.5 < lod.k * n.size3;
   }
   private select(n: Node, cam: THREE.Vector3, camHz: number, out: Node[]): boolean {
     n.used = this.frameNo;
-    if (this.culled(n, cam, camHz)) return true;
+    if (this.culled(n, cam, camHz)) { n.culled = true; return true; }
+    if (n.culled) { n.culled = false; n.revealed = this.frameNo; }
     if (this.wantSplit(n, cam)) {
       if (!n.children) {
         const h = n.size / 2;
@@ -112,6 +120,17 @@ export class Quadtree {
     }
     if (n.state === 'ready') { out.push(n); return true; }
     if (n.state === 'none') { n.state = 'pending'; this.queue.push(n); }
+    // merging back before its own mesh has come (it was never needed while the camera was close): keep what the
+    // children show meanwhile, or the whole branch falls back to a far coarser ancestor for a frame or two
+    if (n.children && !this.wantSplit(n, cam)) {
+      const sub: Node[] = [];
+      let ok = true;
+      for (const c of n.children) ok = this.select(c, cam, camHz, sub) && ok;
+      if (ok) { for (const s of sub) out.push(s); return true; }
+    }
+    // just come over the horizon (the camera rose or moved): nothing was drawn here a moment ago, so it may stay
+    // empty while its mesh streams in, rather than fail its whole branch back to a coarse ancestor
+    if (this.frameNo - n.revealed < 120) return true;
     return false;
   }
   update(cam: THREE.Vector3) {

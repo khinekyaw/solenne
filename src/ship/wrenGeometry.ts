@@ -1,11 +1,11 @@
 import * as THREE from 'three';
-import { HULL, hullR, hullYc, hullPoint, halfWidthAt, thetaAt, glassAt, GLASS, DOOR, DOME, DECK, LOWER_Z, UPPER_Z, STAIRS, HOLE, LADDER, WALLS, RAMP, LEGS, floorHalf } from './wrenShape';
+import { HULL, hullR, hullYc, hullPoint, halfWidthAt, thetaAt, DOME, DECK, LOWER_Z, UPPER_Z, STAIRS, HOLE, LADDER, WALLS, POD, THRUSTER_Z, floorHalf } from './wrenShape';
 
 /* =========================================================================
-   The Wren, built from code (ship-local metres, see wrenShape.ts). Same
-   construction style as the cottage: primitives and parametric surfaces
-   merged into one mesh with per-vertex colour, material kind (aInfo) and
-   hull coordinates (aSkin) for the procedural plating.
+   The Wren's inside, built from code (ship-local metres, see wrenShape.ts);
+   the outside is the Blender model (art/wren). Same construction style as
+   the cottage: primitives and parametric surfaces merged into one mesh with
+   per-vertex colour, material kind (aInfo) and hull coordinates (aSkin).
    ========================================================================= */
 const C = (hex: string, k = 1) => new THREE.Color(hex).multiplyScalar(k);
 export const PAL = {
@@ -110,50 +110,24 @@ export function hullNormal(z: number, th: number, out = new THREE.Vector3()) {
   if (out.dot(p.sub(ax)) < 0) out.negate();
   return out;
 }
-const onHull = (z: number, th: number, lift: number, out = new THREE.Vector3()) => hullPoint(z, th, 0, out).addScaledVector(hullNormal(z, th), lift);
 
 export type Lamp = { p: [number, number, number]; c: THREE.Color; i: number };
+export type Glow = { c: THREE.Vector3; n: THREE.Vector3; r: number; col: THREE.Color };   // a soft additive halo, ship-local
 export type Box = { x0: number; z0: number; x1: number; z1: number; y0: number; y1: number };   // ship-local collision, between heights y0..y1
 
-export function buildWren(gLocal: (x: number, z: number) => number) {
-  const K = new Kit(), G = new Kit(), boxes: Box[] = [], lamps: Lamp[] = [];
-  const glows: { c: THREE.Vector3; n: THREE.Vector3; r: number; col: THREE.Color }[] = [];
+export function buildWren() {
+  const K = new Kit(), boxes: Box[] = [], lamps: Lamp[] = [];
+  const glows: Glow[] = [];
   const v3 = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
   const NU = 112, NV = 150;
 
-  /* ===== hull: outer skin and the inner shell (the openings are cut in the shader) ===== */
-  K.surface(NU, NV, (u, v, o) => hullPoint(zAt(v), thAt(u), 0, o), (u, v) => skinOf(zAt(v), thAt(u)), PAL.cream, 0, {}, true);
+  /* ===== the outside is the Blender model (art/wren → public/models/wren.glb, drawn by wren.ts); the code builds
+     what is inside its skin: the inner shell (openings cut in the shader with the collision's tests) ===== */
   K.surface(NU, NV, (u, v, o) => hullPoint(zAt(v), thAt(u), HULL.thick, o), (u, v) => skinOf(zAt(v), thAt(u)), PAL.wall, 4, { indoor: 1 });
-  // glass canopy: the nose quads that hold glass
-  G.surface(NU, NV, (u, v, o) => hullPoint(zAt(v), thAt(u), -0.004, o), (u, v) => skinOf(zAt(v), thAt(u)), PAL.cream, 0, {}, true,
-    (u0, v0, u1, v1) => [u0, u1].some((u) => [v0, v1].some((v) => glassAt(zAt(v), thAt(u)))));
 
-  // brass rim around the canopy and the mullions between its panes
-  const zg = (th: number) => GLASS.z0 + GLASS.k * (Math.abs(th) / GLASS.th) ** 2;
-  const rim: THREE.Vector3[] = [];
-  for (let z = HULL.zNose - 0.06; z > zg(GLASS.th); z -= 0.35) rim.push(onHull(z, -GLASS.th, 0.03));
-  for (let k = 0; k <= 40; k++) { const th = -GLASS.th + 2 * GLASS.th * k / 40; rim.push(onHull(zg(th), th, 0.03)); }
-  for (let z = zg(GLASS.th) + 0.35; z < HULL.zNose - 0.05; z += 0.35) rim.push(onHull(z, GLASS.th, 0.03));
-  K.tube(rim, 0.075, PAL.brass, 7);
-  for (const th of [-1.3, -0.85, -0.42, 0, 0.42, 0.85, 1.3]) {
-    const pts: THREE.Vector3[] = [];
-    for (let z = zg(th); z < HULL.zNose - 0.02; z += 0.3) pts.push(onHull(z, th, 0.025));
-    pts.push(onHull(HULL.zNose - 0.02, th, 0.025));
-    K.tube(pts, 0.04, PAL.brass, 7);
-  }
-  for (const z of [8.0, 9.4, 10.6, 11.6, 12.3]) {
-    const tm = Math.min(GLASS.th, GLASS.th * Math.sqrt(Math.max(z - GLASS.z0, 0) / GLASS.k));
-    const pts: THREE.Vector3[] = [];
-    for (let k = 0; k <= 24; k++) pts.push(onHull(z, -tm + 2 * tm * k / 24, 0.025));
-    K.tube(pts, 0.04, PAL.brass, 7);
-  }
-
-  /* ===== portholes: two rows each side, brass rings, warm glass outside, the sky seen from inside ===== */
+  /* ===== portholes from inside: brass rings, the sky beyond (the model has them outside at the same places) ===== */
   const porthole = (z: number, th: number, R: number) => {
-    const n = hullNormal(z, th), p = hullPoint(z, th);
-    K.torus(p.x + n.x * 0.04, p.y + n.y * 0.04, p.z + n.z * 0.04, R, 0.075, PAL.brass, 7, n);
-    K.disc(p.clone().addScaledVector(n, 0.03), n, R - 0.02, PAL.warm, 8, { grain: 1 });
-    const pi = hullPoint(z, th, HULL.thick), ni = n.clone().negate();
+    const pi = hullPoint(z, th, HULL.thick), ni = hullNormal(z, th).negate();
     K.torus(pi.x + ni.x * 0.03, pi.y + ni.y * 0.03, pi.z + ni.z * 0.03, R, 0.06, PAL.brass, 7, ni, { indoor: 1 });
     K.disc(pi.clone().addScaledVector(ni, 0.02), ni, R - 0.02, PAL.cool, 10, { indoor: 1 });
   };
@@ -161,146 +135,21 @@ export function buildWren(gLocal: (x: number, z: number) => number) {
     for (const z of [3.4, 1.0, -1.4, -3.8, -6.2]) porthole(z, s * 0.66, 0.36);                            // upper row, high in the vault
     for (const z of [5.6, 3.6, 1.6, -0.4, -2.4, -4.4, -6.6]) porthole(z, s * 1.26, 0.42);                 // at the eyes of the upper deck
   }
-  // Halden's eye: a round lamp low on the port side of the nose
-  { const z = 10.6, th = 2.15, n = hullNormal(z, th), p = hullPoint(z, th);
-    K.torus(p.x + n.x * 0.05, p.y + n.y * 0.05, p.z + n.z * 0.05, 0.55, 0.1, PAL.brass, 7, n);
-    K.disc(p.clone().addScaledVector(n, 0.04), n, 0.5, PAL.warm, 8, { grain: 2 }); }
-  // blue-white light lines along both sides and the pearl "whisker" bar on the nose
-  for (const s of [1, -1]) {
-    const pts: THREE.Vector3[] = [];
-    for (let z = 11.4; z > -10.4; z -= 0.4) pts.push(onHull(z, s * (z > 9 ? 1.95 + (z - 9) * 0.25 : 1.95), 0.03));
-    K.tube(pts, 0.04, PAL.cool, 9, { grain: 1 });
-    const w0 = onHull(9.8, s * 1.83, 0.06), w1 = onHull(8.4, s * 1.83, 0.06);
-    K.strut(w0, w1, 0.16, 0.08, PAL.pearl, 7);
-    K.blob(w0.x, w0.y, w0.z, 0.12, PAL.pearl, 7);
-  }
-
-  /* ===== dome: glass, brass frame, a skirt that seats it in the hull ===== */
-  const domeC = v3(0, DOME.base, DOME.z);
-  { const g = new THREE.SphereGeometry(DOME.r, 40, 14, 0, Math.PI * 2, 0, Math.PI / 2);
-    G.add(g, new THREE.Matrix4().compose(domeC, new THREE.Quaternion(), v3(1, DOME.hScale, 1)), PAL.cream, 6); }
-  K.add(new THREE.CylinderGeometry(DOME.r + 0.06, DOME.r + 0.12, 1.25, 44, 1, true), K.mtx(0, DOME.base - 0.62, DOME.z), PAL.bronze, 7);
+  // the dome's collar, seen from the stargazing seat
   K.add(new THREE.CylinderGeometry(DOME.r + 0.06, DOME.r + 0.12, 1.25, 44, 1, true), K.mtx(0, DOME.base - 0.62, DOME.z), PAL.bronze, 7, { indoor: 1 }, true);
-  K.torus(0, DOME.base, DOME.z, DOME.r + 0.06, 0.13, PAL.brass, 7, v3(0, 1, 0));
-  for (let k = 0; k < 12; k++) {
-    const a = k / 12 * Math.PI * 2, pts: THREE.Vector3[] = [];
-    for (let e = 0; e <= 8; e++) { const el = e / 8 * Math.PI / 2; pts.push(v3(Math.cos(a) * Math.cos(el) * (DOME.r + 0.02), DOME.base + Math.sin(el) * DOME.r * DOME.hScale + 0.02, DOME.z + Math.sin(a) * Math.cos(el) * (DOME.r + 0.02))); }
-    K.tube(pts, 0.035, PAL.brass, 7);
-  }
-  for (const el of [0.42, 0.85, 1.2]) {
-    const pts: THREE.Vector3[] = [];
-    for (let k = 0; k <= 36; k++) { const a = k / 36 * Math.PI * 2; pts.push(v3(Math.cos(a) * Math.cos(el) * (DOME.r + 0.02), DOME.base + Math.sin(el) * DOME.r * DOME.hScale, DOME.z + Math.sin(a) * Math.cos(el) * (DOME.r + 0.02))); }
-    K.tube(pts, 0.035, PAL.brass, 7, {}, true);
-  }
-  K.cyl(0, DOME.base + DOME.r * DOME.hScale + 0.08, DOME.z, 0.2, 0.12, 0.18, 10, PAL.brass, 7);
 
-  /* ===== wings, engine pods, tail ===== */
+  /* ===== soft glows outside: engine halos, the tail thruster (the hover pads' depend on the ground: wren.ts) ===== */
   for (const s of [1, -1]) {
-    const x0 = 4.45, span = 6.0;   // the root sits inside the hull's thickness, not in the cabin
-    const wing = (u: number, v: number, o: THREE.Vector3) => {
-      const t = v, tip = t > 0.82 ? Math.sqrt(Math.max(1 - ((t - 0.82) / 0.18) ** 2, 0)) : 1;
-      const chord = (8.2 - 4.2 * t) * (0.25 + 0.75 * tip), thick = (0.95 - 0.5 * t) * tip;
-      const a = u * Math.PI * 2, zc = 0.4 - 1.9 * t, yc = 4.95 + 0.45 * t;
-      return o.set(s * (x0 + span * t), yc + 0.5 * thick * Math.sin(a), zc + 0.5 * chord * Math.cos(a));
-    };
-    K.surface(40, 24, wing, (u, v) => { const p = wing(u, v, new THREE.Vector3()); return [u * 7.0, p.x * s, NO_SKIN + 0.5]; }, PAL.cream, 0, {}, s > 0);
-    // engine pod hanging under the wing, glowing aft and underneath
-    const px = s * 7.2, py = 3.15, pz0 = -5.8, pz1 = -0.2, pr = 1.15;
-    const podR = (t: number) => { const zf = (t - 0.8) / 0.2; return t > 0.8 ? Math.sqrt(Math.max(1 - zf * zf, 0.0)) : t < 0.12 ? 0.72 + 0.28 * Math.sqrt(t / 0.12) : 1; };
-    const pod = (u: number, v: number, o: THREE.Vector3) => { const a = u * Math.PI * 2, r = pr * podR(v); return o.set(px + r * Math.sin(a), py + r * Math.cos(a), pz0 + (pz1 - pz0) * v); };
-    K.surface(28, 30, pod, (u, v) => [u * 7.2, pz0 + (pz1 - pz0) * v, NO_SKIN + 0.5], PAL.cream, 0, {}, true);
-    K.torus(px, py, pz0 + 0.02, pr * 0.72, 0.09, PAL.brass, 7, v3(0, 0, -1));
-    K.disc(v3(px, py, pz0 - 0.01), v3(0, 0, -1), pr * 0.62, PAL.cool, 9);
-    K.torus(px, py, pz1 - 0.5, pr * 0.6, 0.07, PAL.brass, 7, v3(0, 0, 1));
-    K.disc(v3(px, py - pr * 0.98, (pz0 + pz1) / 2), v3(0, -1, 0), 0.55, PAL.cool, 9);
-    K.box(px, 4.5, (pz0 + pz1) / 2, 0.35, 0.8, 2.6, PAL.bronze, 7);
-    glows.push({ c: v3(px, py, pz0 - 0.35), n: v3(0, 0, -1), r: 1.6, col: new THREE.Color(0.25, 0.55, 0.8) });
-    glows.push({ c: v3(px, py - pr - 0.3, (pz0 + pz1) / 2), n: v3(0, -1, 0), r: 1.4, col: new THREE.Color(0.2, 0.45, 0.7) });
+    const px = s * POD.x;
+    glows.push({ c: v3(px, POD.y, POD.z0 - 0.6), n: v3(0, 0, -1), r: 1.5, col: new THREE.Color(0.25, 0.55, 0.8) });
+    glows.push({ c: v3(px, POD.y - POD.r - 0.3, (POD.z0 + POD.z1) / 2), n: v3(0, -1, 0), r: 1.4, col: new THREE.Color(0.2, 0.45, 0.7) });
   }
-  // tail fin and the two pointed tail planes
-  { const sh = new THREE.Shape();
-    sh.moveTo(-7.4, 9.75); sh.bezierCurveTo(-9.0, 10.8, -10.8, 12.3, -12.6, 13.1); sh.quadraticCurveTo(-13.6, 13.4, -13.5, 12.4);
-    sh.bezierCurveTo(-13.2, 11.0, -12.4, 9.6, -11.9, 8.55); sh.lineTo(-7.4, 9.75);   // the foot follows the hull top, above the cabin
-    const g = new THREE.ExtrudeGeometry(sh, { depth: 0.34, bevelEnabled: true, bevelThickness: 0.1, bevelSize: 0.1, bevelSegments: 3, curveSegments: 16 });
-    const m = new THREE.Matrix4().makeRotationY(-Math.PI / 2).setPosition(0.17, 0, 0);
-    const pa = g.attributes.position, sk: number[] = [];
-    for (let i = 0; i < pa.count; i++) sk.push(pa.getY(i) * 1.0, pa.getX(i), NO_SKIN + 0.5);
-    g.setAttribute('skin', new THREE.Float32BufferAttribute(sk, 3));
-    K.add(g, m, PAL.cream, 0); }
-  for (const s of [1, -1]) {
-    const sh = new THREE.Shape();
-    sh.moveTo(1.0, -9.9); sh.lineTo(1.9, -10.1); sh.quadraticCurveTo(2.9, -11.6, 3.7, -13.9); sh.quadraticCurveTo(2.3, -12.8, 1.0, -12.2); sh.lineTo(1.0, -9.9);   // behind the rear cabin wall
-    const g = new THREE.ExtrudeGeometry(sh, { depth: 0.2, bevelEnabled: true, bevelThickness: 0.06, bevelSize: 0.06, bevelSegments: 2 });
-    const pa = g.attributes.position, sk: number[] = [];
-    for (let i = 0; i < pa.count; i++) sk.push(pa.getX(i) * 1.5, pa.getY(i), NO_SKIN + 0.5);
-    g.setAttribute('skin', new THREE.Float32BufferAttribute(sk, 3));
-    // shape (x, z) → ship (s·x, y, z): lie flat (a proper rotation, so the winding stays right)
-    const m = new THREE.Matrix4().set(s, 0, 0, 0, 0, 0, -s, hullYc(-11) + 0.1 * s, 0, 1, 0, 0, 0, 0, 0, 1);
-    K.add(g, m, PAL.cream, 0);
-  }
-  // the tail end: a closing cap, a brass ring and the main thruster
-  { const z = HULL.zTail, r = hullR(z), yc = hullYc(z);
-    K.add(new THREE.CircleGeometry(1, 32), new THREE.Matrix4().compose(v3(0, yc + 0.18 * r, z - 0.01), new THREE.Quaternion().setFromUnitVectors(v3(0, 0, 1), v3(0, 0, -1)), v3(HULL.W * r, 4.5 * r, 1)), PAL.bronze, 7);
-    K.torus(0, yc, z - 0.08, 1.12, 0.14, PAL.brass, 7, v3(0, 0, -1));
-    K.disc(v3(0, yc, z - 0.05), v3(0, 0, -1), 1.0, PAL.pearl, 7);
-    K.disc(v3(0, yc, z - 0.09), v3(0, 0, -1), 0.72, PAL.cool, 9);
-    glows.push({ c: v3(0, yc, z - 0.5), n: v3(0, 0, -1), r: 2.2, col: new THREE.Color(0.3, 0.6, 0.85) }); }
-
-  /* ===== landing legs with hover pads, the belly block ===== */
-  for (const [fx, fz] of LEGS) {
-    const s = Math.sign(fx), g = gLocal(fx, fz);
-    const hip = v3(fx * 0.62, Math.max(2.2, 0) + (fz < 0 ? 0.25 : 0), fz), knee = v3(fx * 0.95, 1.35 + g * 0.5, fz + (fz > 0 ? 0.5 : -0.5)), foot = v3(fx, g + 0.62, fz);
-    K.strut(hip, knee, 0.55, 0.55, PAL.pearl, 7);
-    K.strut(knee, foot, 0.42, 0.42, PAL.pearl, 7);
-    K.cyl(hip.x, hip.y, hip.z, 0.38, 0.38, 0.7, 14, PAL.joint, 7, { rz: Math.PI / 2 });
-    K.cyl(knee.x, knee.y, knee.z, 0.34, 0.34, 0.66, 14, PAL.joint, 7, { rz: Math.PI / 2 });
-    K.cyl(fx, g + 0.42, fz, 0.82, 0.95, 0.36, 22, PAL.bronze, 7);
-    K.cyl(fx, g + 0.66, fz, 0.5, 0.6, 0.16, 18, PAL.joint, 7);
-    K.torus(fx, g + 0.25, fz, 0.68, 0.05, PAL.cool, 9, v3(0, -1, 0));
-    glows.push({ c: v3(fx, g + 0.03, fz), n: v3(0, 1, 0), r: 1.5, col: new THREE.Color(0.22, 0.5, 0.75) });
-    boxes.push({ x0: fx - 0.85, z0: fz - 0.85, x1: fx + 0.85, z1: fz + 0.85, y0: -2, y1: 1.4 });
-    void s;
-  }
-  K.box(0, 1.65, 2.6, 1.7, 0.55, 2.6, PAL.bronze, 7);
-
-  /* ===== side door: frame, jamb and sill; the ramp down to the grass ===== */
-  const xOut = (y: number, z: number) => halfWidthAt(y, z) + 0.02, xIn = (y: number, z: number) => halfWidthAt(y, z, HULL.thick) - 0.01;
-  const outline: [number, number][] = [];
-  for (let y = DOOR.y0; y < DOOR.yArc; y += 0.25) outline.push([DOOR.z0, y]);
-  for (let k = 0; k <= 16; k++) { const a = Math.PI - k / 16 * Math.PI; outline.push([0.8 + 0.9 * Math.cos(a), DOOR.yArc + 0.9 * Math.sin(a)]); }
-  for (let y = DOOR.yArc; y >= DOOR.y0; y -= 0.25) outline.push([DOOR.z1, y]);
-  K.tube(outline.map(([z, y]) => v3(xOut(y, z) + 0.03, y, z)), 0.08, PAL.brass, 7);
-  { const pos: number[] = [];
-    for (let k = 0; k + 1 < outline.length; k++) {
-      const [za, ya] = outline[k], [zb, yb] = outline[k + 1];
-      const a0 = v3(xOut(ya, za), ya, za), a1 = v3(xIn(ya, za), ya, za), b0 = v3(xOut(yb, zb), yb, zb), b1 = v3(xIn(yb, zb), yb, zb);
-      pos.push(...a0.toArray(), ...b0.toArray(), ...b1.toArray(), ...a0.toArray(), ...b1.toArray(), ...a1.toArray());
-    }
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals();
-    K.add(g, null, PAL.pearl, 7, { indoor: 1 }); }
-  K.box((xIn(2.5, 0.8) + xOut(2.5, 0.8)) / 2 + 0.05, DOOR.y0 - 0.04, 0.8, xOut(2.5, 0.8) - xIn(2.5, 0.8) + 0.5, 0.08, DOOR.z1 - DOOR.z0, PAL.pearl, 7);
-  // ramp: hinged at the sill, wooden slats on a pearl frame, side rails
-  const gEnd = gLocal(RAMP.x0 + RAMP.len * 0.9, 0.8), drop = DECK.lower - gEnd, ang = Math.asin(Math.min(drop / RAMP.len, 0.95));
-  const run = RAMP.len * Math.cos(ang), rampY = (x: number) => DECK.lower - (x - RAMP.x0) * Math.tan(ang);
-  const mid = v3(RAMP.x0 + run / 2, (DECK.lower + gEnd) / 2 - 0.06, (RAMP.z0 + RAMP.z1) / 2);
-  K.box(mid.x, mid.y, mid.z, RAMP.len, 0.1, RAMP.z1 - RAMP.z0, PAL.pearl, 7, { rz: -ang });
-  for (let d = 0.2; d < RAMP.len - 0.1; d += 0.34) {
-    const x = RAMP.x0 + d * Math.cos(ang), y = DECK.lower - d * Math.sin(ang);
-    K.box(x, y + 0.03, mid.z, 0.2, 0.06, RAMP.z1 - RAMP.z0 - 0.22, PAL.plank, 2, { rz: -ang, grain: 2 });
-  }
-  for (const z of [RAMP.z0 + 0.05, RAMP.z1 - 0.05]) {
-    K.box(mid.x, mid.y + 0.08, z, RAMP.len, 0.16, 0.1, PAL.joint, 7, { rz: -ang });
-    const top = [0.4, RAMP.len - 0.3].map((d) => v3(RAMP.x0 + d * Math.cos(ang), DECK.lower - d * Math.sin(ang) + 0.95, z));
-    for (const p of top) K.cyl(p.x, p.y - 0.47, z, 0.035, 0.035, 0.95, 6, PAL.brass, 7);
-    K.tube(top, 0.035, PAL.brass, 7);
-    boxes.push({ x0: RAMP.x0 + 0.2, z0: z - 0.08, x1: RAMP.x0 + run, z1: z + 0.08, y0: -2, y1: 4.5 });
-  }
-  K.cyl(RAMP.x0, DECK.lower - 0.08, mid.z, 0.09, 0.09, RAMP.z1 - RAMP.z0, 10, PAL.joint, 7, { rx: Math.PI / 2 });
+  glows.push({ c: v3(0, hullYc(HULL.zTail), THRUSTER_Z - 0.5), n: v3(0, 0, -1), r: 2.2, col: new THREE.Color(0.3, 0.6, 0.85) });
 
   /* ===== inside: floors, partitions, stairs, ladder ===== */
   buildInterior(K, boxes, lamps);
 
-  return { geo: K.geometry(), glass: G.geometry(), glows, boxes, lamps, rampY, rampRun: run };
+  return { geo: K.geometry(), glows, boxes, lamps };
 }
 
 /* ---- the two decks (see the cutaway): rooms, furniture, lamps ---- */
@@ -390,7 +239,8 @@ function buildInterior(K: Kit, boxes: Box[], lamps: Lamp[]) {
   }
   K.box(0, U + 0.5, 10.55, 3.0, 1.0, 0.7, PAL.woodDark, 1, { indoor: 1, grain: 0 });
   K.box(0, U + 1.03, 10.4, 3.0, 0.06, 0.9, PAL.brassDark, 7, { indoor: 1, rx: 0.25 });
-  for (const [x, a] of [[-1.0, 0.3], [0, 0], [1.0, -0.3]]) K.box(x, U + 1.5, 10.75, 0.8, 0.5, 0.03, PAL.holo, 9, { indoor: 1, ry: a, rx: -0.25, grain: 2 });
+  // (low and tilted back, so the pilot sees the sky over them)
+  for (const [x, a] of [[-1.0, 0.3], [0, 0], [1.0, -0.3]]) K.box(x, U + 1.3, 10.75, 0.8, 0.42, 0.03, PAL.holo, 9, { indoor: 1, ry: a, rx: -0.55, grain: 2 });
   K.cyl(0, U + 1.15, 10.05, 0.05, 0.05, 0.4, 8, PAL.iron, 7, { indoor: 1, rx: 0.6 });
   deckBox(-1.6, 10.1, 1.6, 11.0, U);
   lamps.push({ p: [0, U + 1.6, 10.2], c: PAL.holo, i: 0.35 });

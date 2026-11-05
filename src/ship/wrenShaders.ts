@@ -4,12 +4,14 @@ import { GLASS, DOOR, DOME, HULL } from './wrenShape';
 const f = (x: number) => x.toFixed(4);
 /* =========================================================================
    The Wren's shaders. Same lighting as the cottage (gentle sun, strong
-   skylight, the house/ship shadow maps, haze), in the spawn region's flat
-   space via uFlatM. The hull skin is procedural: a seeded panel grid with
-   aligned seams, darker grooves, rivets, per-panel paint and wear, brass
-   strakes, moss on the up-facing seams and the painted name on the nose.
-   Openings (glass canopy, door, dome) are cut with the same tests as the
-   collision code in wrenShape.ts.
+   skylight, shadow maps, haze), but local shaders: SUN = uSunDirL, camera at
+   the origin, so the ship is lit right wherever it stands or flies, up to
+   orbit. What belongs to the ship lives in ship-local metres (vLocal): its
+   own shadow map, its lamps, the openings. SHIP_*: the code-built inside
+   (wood, painted panels, lamps); the canopy, doorway and dome are cut from the
+   inner shell with the collision code's tests (wrenShape.ts). MODEL_*: the
+   Blender model's outside, lit from its baked atlas (albedo, normal,
+   AO/roughness/metal) and named lamp materials.
    ========================================================================= */
 const REGIONS = /* glsl */`
 // aSkin: (metres around, metres along, angle from the top); angle < -8 marks parts that are not hull skin
@@ -17,14 +19,21 @@ bool cutOut(vec3 L, vec3 sk) {
   if (sk.z < -8.0) return false;
   float th = abs(sk.z);
   if (th < ${f(GLASS.th)} && sk.y > ${f(GLASS.z0)} + ${f(GLASS.k)} * pow(th / ${f(GLASS.th)}, 2.0)) return true;   // nose canopy
+  float dz = max(abs(L.z - 0.8) - ${f(0.9 - DOOR.r)}, 0.0);                                                     // side doorway: a rounded rectangle
   if (L.x > 0.0 && L.z > ${f(DOOR.z0)} && L.z < ${f(DOOR.z1)} && L.y > ${f(DOOR.y0 - 0.05)}
-      && L.y < ${f(DOOR.yArc)} + sqrt(max(0.0, 0.81 - (L.z - 0.8) * (L.z - 0.8)))) return true;                // side door
+      && L.y < ${f(DOOR.y1 - DOOR.r)} + sqrt(max(0.0, ${f(DOOR.r * DOOR.r)} - dz * dz))) return true;
   if (L.y > 9.0 && length(L.xz - vec2(0.0, ${f(DOME.z)})) < ${f(DOME.hole)}) return true;                     // under the dome
   return false;
 }
 `;
+// the ship's own shadow map (ship-local), cloud shadows from the planet-fixed position of a local point
+const SHIP_LIGHT = /* glsl */`
+uniform mat4 uShipShadowL;   // ship-local -> the ship's shadow map
+uniform vec3 uCamShip;       // the camera in ship-local metres
+float shipShadow(vec3 L, vec3 n) { return shadowMapPCF(uSShadow, uShipShadowL, L, n); }
+float cloudShadowL(vec3 w) { vec3 p = uCamPF + uLtoPF * w; return cloudShadowPF(p, length(p) - PLANET_R); }
+`;
 export const SHIP_VS = /* glsl */`
-uniform mat4 uFlatM;
 attribute vec3 aColor;
 attribute vec4 aInfo;
 attribute vec3 aSkin;
@@ -36,19 +45,19 @@ varying vec3 vWorld;
 varying vec3 vN;
 varying vec3 vSkin;
 void main() {
-  vWorld = (uFlatM * vec4(position, 1.0)).xyz; vLocal = position; vLN = normal; vSkin = aSkin;
-  vN = normalize(mat3(uFlatM) * normal);
+  vec4 w = modelMatrix * vec4(position, 1.0);
+  vWorld = w.xyz; vLocal = position; vLN = normal; vSkin = aSkin;
+  vN = normalize(mat3(modelMatrix) * normal);
   vColor = aColor; vInfo = aInfo;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  gl_Position = projectionMatrix * viewMatrix * w;
 }
 `;
 export const SHIP_FS = /* glsl */`
-#define SUN uSunDir
+#define SUN uSunDirL
 ${COMMON}
 ${REGIONS}
-uniform sampler2D uTerrain;
-uniform sampler2D uName;
-uniform vec4 uLampP[10];   // flat position, intensity (the last one spills out of the door onto the ramp)
+${SHIP_LIGHT}
+uniform vec4 uLampP[10];   // ship-local position, intensity (the last one spills out of the door onto the ramp)
 uniform vec3 uLampC[10];
 uniform float uEye;        // Halden's eye lamp and core: a slow, calm pulse
 uniform float uCore;
@@ -60,64 +69,13 @@ varying vec3 vWorld;
 varying vec3 vN;
 varying vec3 vSkin;
 float h1(float n) { return fract(sin(n) * 43758.5453); }
-float h2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-
-/* patchwork hull plating: rows along the hull, staggered columns around it */
-vec3 plating(vec3 sk, vec3 Nf, out float seamOut) {
-  float RL = 2.3, CW = 1.75;                                     // panel size along and around the hull
-  float zw = sk.y + 0.45 * sin(sk.y * 0.29 + 1.3);              // irregular row lengths
-  float row = floor(zw / RL), fz = fract(zw / RL) * RL;
-  float u = sk.x + h1(row * 7.31) * CW;
-  float col = floor(u / CW), fu = fract(u / CW) * CW;
-  float id = h2(vec2(row, col));
-  vec3 cream = vec3(0.76, 0.65, 0.47), terra = vec3(0.50, 0.19, 0.11), teal = vec3(0.21, 0.32, 0.28), olive = vec3(0.42, 0.35, 0.16), pale = vec3(0.66, 0.62, 0.52);
-  vec3 c = id < 0.44 ? cream : id < 0.64 ? terra : id < 0.82 ? teal : id < 0.91 ? olive : pale;
-  c *= 0.9 + 0.16 * h2(vec2(col, row) + 3.7);
-  // soft wear: faint streaks running down, the odd rust patch, slightly darker toward the belly
-  float streak = texture(uWeather, vec2(sk.x * 0.21, sk.y * 0.03 + vLocal.y * 0.09)).r;
-  c *= 0.95 + 0.08 * streak;
-  float rust = smoothstep(0.9, 0.98, texture(uWeather, sk.xy * 0.11 + id).a + 0.06 * (1.0 - Nf.y));
-  c = mix(c, vec3(0.42, 0.2, 0.09), rust * 0.3);
-  c *= 0.86 + 0.14 * smoothstep(-0.8, 0.4, Nf.y);
-  c *= mix(vec3(1.0), vec3(0.84, 0.78, 0.66), smoothstep(0.5, 1.0, Nf.y) * (0.6 + 0.4 * streak));   // warm grime on the top (else it shone like chrome under the blue sky)
-  // seams with a dark groove and a lighter bevel; rivets along them
-  float dz = min(fz, RL - fz), du = min(fu, CW - fu), d = min(dz, du);
-  float seam = smoothstep(0.015, 0.04, d);
-  c *= mix(0.42, 1.0, seam) * (1.0 + 0.1 * (1.0 - smoothstep(0.04, 0.09, d)));
-  vec2 rz = vec2(fract(sk.x / 0.17) * 0.17 - 0.085, dz - 0.07), ru = vec2(fract(sk.y / 0.17) * 0.17 - 0.085, du - 0.07);
-  float rivet = max(1.0 - smoothstep(0.012, 0.024, length(rz)), 1.0 - smoothstep(0.012, 0.024, length(ru)));
-  c = mix(c, c * 1.35 + 0.03, rivet * 0.8);
-  seamOut = 1.0 - smoothstep(0.02, 0.3, d);   // nearness to a seam: where moss takes hold
-  return c;
-}
 
 void main() {
   if (cutOut(vLocal, vSkin)) discard;
   float kind = vInfo.x;
   vec3 alb = vColor, L = vLocal, an = abs(normalize(vLN));
   vec2 fp = (an.x > an.y && an.x > an.z) ? L.zy : (an.y > an.z ? L.xz : L.xy);
-  vec3 Nf = normalize(vN);
-  float seamK = 0.0;
-  if (kind < 0.5) {                                      // patchwork hull skin
-    alb = plating(vSkin, Nf, seamK);
-    float th = abs(vSkin.z);
-    if (vSkin.z > -8.0) {
-      // brass strake between the porthole rows
-      float sb = smoothstep(0.035, 0.02, abs(th - 0.98));
-      alb = mix(alb, vec3(0.42, 0.30, 0.13) * (0.85 + 0.25 * texture(uWeather, vSkin.xy * 0.4).g), sb);
-      // the ship's name on the port side of the nose
-      if (vSkin.z > 0.0 && vSkin.y > 6.9 && vSkin.y < 9.4 && th > 1.5 && th < 1.75) {
-        float m = texture(uName, vec2((9.4 - vSkin.y) / 2.5, 1.0 - (th - 1.5) / 0.25)).a;
-        m *= 0.75 + 0.25 * smoothstep(0.3, 0.6, texture(uWeather, vSkin.xy * 0.8).b);   // weathered paint
-        alb = mix(alb, vec3(0.08, 0.05, 0.035), m * 0.92);
-      }
-    }
-    // moss gathers along the up-facing seams, with a few patches between (not a blanket: from above or
-    // from the dome a heavy coat read as camouflage)
-    float mn = texture(uWeather, vSkin.xy * 0.13 + 0.4).g * 0.7 + texture(uWeather, vSkin.xy * 0.6).a * 0.3;
-    float moss = smoothstep(0.8, 0.84, mn + 0.25 * seamK) * smoothstep(0.6, 0.7, Nf.y);   // crisp edges: soft ones read as reflections
-    alb = mix(alb, mix(vec3(0.09, 0.16, 0.05), vec3(0.22, 0.27, 0.08), texture(uWeather, vSkin.xy * 1.7).r), moss);
-  } else if (kind < 2.5) {                               // wood: 1 = beams and furniture, 2 = planks
+  if (kind < 2.5) {                               // wood: 1 = beams and furniture, 2 = planks
     float g = vInfo.y;
     float a = g < 0.5 ? L.x : (g < 1.5 ? L.y : L.z);
     float b = g < 0.5 ? L.y + L.z : (g < 1.5 ? L.x + L.z : L.x + L.y);
@@ -139,28 +97,27 @@ void main() {
     alb *= 0.92 + 0.12 * texture(uWeather, fp * 2.3).a;
   }
 
-  vec3 N = Nf;
-  vec3 toCam = uCamPos - vWorld;
-  float dist = length(toCam);
-  vec3 V = toCam / dist;
-  if (dot(N, V) < 0.0 && kind > 0.5) N = -N;   // thin interior parts are seen from both sides
+  vec3 N = normalize(vN), NL = normalize(vLN);   // the same normal in the local frame and in the ship's
+  float dist = length(vWorld);
+  vec3 V = -vWorld / dist;
+  if (dot(NL, uCamShip - vLocal) < 0.0) { N = -N; NL = -NL; }   // thin interior parts are seen from both sides
   float indoor = vInfo.z, ao = vInfo.w;
   alb *= 1.0 - 0.2 * uWet * (1.0 - indoor);
-  float hs = houseShadow(vWorld, N);
-  float ts = cloudShadow(vWorld);   // (not the meadow's baked shadow: the hull stands metres above it)
+  float hs = shipShadow(vLocal, NL);
+  float ts = cloudShadowL(vWorld);
   vec3 sun = uSunColor * GROUND_SUN * max(dot(N, SUN), 0.0) * hs * ts;
   // warm lamps inside; only the last spills out of the door onto the ramp
   vec3 lamps = vec3(0.0);
   for (int i = 0; i < 10; i++) {
-    vec3 Lm = uLampP[i].xyz - vWorld; float ld = length(Lm);
+    vec3 Lm = uLampP[i].xyz - vLocal; float ld = length(Lm);
     float k = i == 9 ? 1.0 : indoor;
-    lamps += uLampC[i] * uLampP[i].w * k * (0.3 + 0.7 * max(dot(N, Lm / ld), 0.0)) / (1.0 + ld * ld * 0.55);
+    lamps += uLampC[i] * uLampP[i].w * k * (0.3 + 0.7 * max(dot(NL, Lm / ld), 0.0)) / (1.0 + ld * ld * 0.55);
   }
   vec3 outC = alb * (sun + skyAmbient(N) * ao + lamps);
   vec3 inC = alb * (sun * 1.7 + skyAmbient(N) * 0.12 * ao + uSunColor * 0.015 * ao + lamps);
   vec3 col = mix(outC, inC, step(0.5, indoor));
-  if (kind < 0.5 || (kind > 6.5 && kind < 7.5)) col += pow(max(dot(reflect(-V, N), SUN), 0.0), kind < 0.5 ? 18.0 : 40.0) * uSunColor * (kind < 0.5 ? 0.05 : 0.15) * hs;
-  col += (1.0 - indoor) * uWet * 0.06 * pow(1.0 - max(dot(N, V), 0.0), 4.0) * hazeColor(reflect(-V, N));
+  if (kind > 6.5 && kind < 7.5) col += pow(max(dot(reflect(-V, N), SUN), 0.0), 40.0) * uSunColor * 0.15 * hs;
+  col += (1.0 - indoor) * uWet * 0.06 * pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 4.0) * hazeColor(reflect(-V, N));
   // lights: warm (portholes, lamps; Halden's eye and core pulse), cool blue-white (seams, engines, instruments)
   if (kind > 7.5 && kind < 8.5) {
     float g = vInfo.y, pulse = g > 2.5 ? uCore : g > 1.5 ? uEye : 1.0;
@@ -176,31 +133,6 @@ void main() {
   if (kind > 9.5) col = hazeColor(-V) * 1.05 + skyAmbient(-V) * 0.15;
   col = mix(col, hazeColor(-V), hazeAmount(dist));
   gl_FragColor = vec4(col, 1.0);
-}
-`;
-/* the nose canopy and the dome: reflections, the warm cabin showing through */
-export const SHIP_GLASS_FS = /* glsl */`
-#define SUN uSunDir
-${COMMON}
-${REGIONS}
-varying vec3 vLocal;
-varying vec3 vWorld;
-varying vec3 vN;
-varying vec3 vSkin;
-varying vec3 vColor;
-varying vec4 vInfo;
-varying vec3 vLN;
-void main() {
-  // the canopy mesh covers a little more than the opening: keep only the glass part
-  if (vSkin.z > -8.0 && !(abs(vSkin.z) < ${f(GLASS.th)} && vSkin.y > ${f(GLASS.z0)} + ${f(GLASS.k)} * pow(abs(vSkin.z) / ${f(GLASS.th)}, 2.0))) discard;
-  vec3 N = normalize(vN), V = normalize(uCamPos - vWorld);
-  if (dot(N, V) < 0.0) N = -N;
-  float fres = pow(1.0 - max(dot(N, V), 0.0), 3.0);
-  // a soft sky-blue sheen that catches the sky (as in the concept), the warm cabin faintly behind
-  vec3 R = reflect(-V, N);
-  vec3 col = mix(hazeColor(R), skyAmbient(R) * 1.4, 0.4) * (0.55 + 0.45 * fres) + uSunColor * pow(max(dot(R, SUN), 0.0), 120.0) * 0.6
-           + vec3(0.52, 0.66, 0.78) * 0.08;
-  gl_FragColor = vec4(col, 0.34 + 0.5 * fres);
 }
 `;
 /* soft additive glows: the hover pads on the grass, engine exhaust halos */
@@ -221,7 +153,41 @@ void main() {
   gl_FragColor = vec4(vColor * a * (0.6 + 0.8 * uNight), 1.0);
 }
 `;
-/* shadow pass: depth only, with the same openings so sunlight falls through the canopy and the dome */
+/* the jets: soft plumes billboarded round their axes (ship-local), longer and brighter with the thrust; the
+   lift jets under the pods only near the ground */
+export const JET_VS = /* glsl */`
+attribute vec3 aBase;
+attribute vec4 aJet;   // axis (xyz), lift jet (w)
+attribute vec2 aSize;  // length, width
+uniform vec3 uCamShip;
+uniform float uThrust;
+uniform float uLift;
+varying vec2 vUv;
+varying float vK;
+void main() {
+  vK = aJet.w > 0.5 ? uLift : uThrust;
+  vec3 ax = aJet.xyz, side = normalize(cross(ax, normalize(uCamShip - aBase)));
+  vec3 p = aBase + ax * uv.y * aSize.x * (0.35 + 0.65 * vK) + side * (uv.x - 0.5) * aSize.y * mix(0.55, 1.5, uv.y);
+  vUv = uv;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+}
+`;
+export const JET_FS = /* glsl */`
+uniform float uTime;
+varying vec2 vUv;
+varying float vK;
+void main() {
+  float a = clamp(vUv.y, 0.0, 1.0), x = abs(vUv.x - 0.5) * 2.0;   // (clamped: pow of a negative base is NaN, and bloom spreads it)
+  float body = exp(-x * x * 5.0) * pow(1.0 - a, 1.8) * smoothstep(0.0, 0.06, a);
+  float core = exp(-x * x * 40.0) * pow(1.0 - a, 5.0);
+  // a little turbulence running down the plume
+  float flick = 0.8 + 0.2 * sin(uTime * 37.0 - a * 21.0) * sin(uTime * 23.0 + a * 13.0 + x * 4.0);
+  vec3 col = vec3(0.32, 0.6, 0.95) * body * 0.55 + vec3(0.8, 0.92, 1.0) * core * 0.9;
+  gl_FragColor = vec4(col * flick * vK, 1.0);
+}
+`;
+/* shadow pass (rendered in ship-local metres): depth only, with the same openings so sunlight falls
+   through the canopy and the dome */
 export const SHIP_DEPTH_FS = /* glsl */`
 ${REGIONS}
 varying vec3 vLocal;
@@ -234,3 +200,101 @@ varying vec3 vN;
 void main() { if (cutOut(vLocal, vSkin)) discard; gl_FragColor = vec4(1.0); }
 `;
 export const HULL_THICK = HULL.thick;
+
+/* ---- the Blender model (outside) ---- */
+export const MODEL_VS = /* glsl */`
+uniform mat4 uNodeM;   // the node's matrix in the model: its vertices in ship-local metres
+attribute vec4 tangent;
+varying vec3 vWorld;
+varying vec3 vN;
+varying vec4 vT;
+varying vec2 vUv;
+varying vec3 vLocal;
+varying vec3 vLN;
+void main() {
+  vec4 w = modelMatrix * vec4(position, 1.0);
+  vWorld = w.xyz;
+  vLocal = (uNodeM * vec4(position, 1.0)).xyz; vLN = normalize(mat3(uNodeM) * normal);
+  vN = normalize(mat3(modelMatrix) * normal);
+  vT = vec4(mat3(modelMatrix) * tangent.xyz, tangent.w);
+  vUv = uv;
+  gl_Position = projectionMatrix * viewMatrix * w;
+}
+`;
+const MODEL_VARYINGS = /* glsl */`
+varying vec3 vWorld;
+varying vec3 vN;
+varying vec4 vT;
+varying vec2 vUv;
+varying vec3 vLocal;
+varying vec3 vLN;
+`;
+/* the painted hull, brass, enamel, wood: albedo, normal map and AO from the bake, the game's light */
+export const MODEL_FS = /* glsl */`
+#define SUN uSunDirL
+${COMMON}
+${SHIP_LIGHT}
+uniform sampler2D uAlb;
+uniform sampler2D uNrm;
+uniform sampler2D uOrm;
+uniform vec4 uLampP[10];   // (the last spills out of the door onto the ramp)
+uniform vec3 uLampC[10];
+${MODEL_VARYINGS}
+void main() {
+  vec3 alb = texture(uAlb, vUv).rgb, orm = texture(uOrm, vUv).rgb, tn = texture(uNrm, vUv).xyz * 2.0 - 1.0;
+  vec3 Ng = normalize(vN), T = normalize(vT.xyz - Ng * dot(vT.xyz, Ng)), B = cross(Ng, T) * (vT.w < 0.0 ? -1.0 : 1.0);
+  vec3 N = normalize(T * tn.x + B * tn.y + Ng * tn.z);
+  float dist = length(vWorld);
+  vec3 V = -vWorld / dist;
+  float ao = orm.r, rough = orm.g, metal = orm.b;
+  alb *= 1.0 - 0.2 * uWet;
+  float hs = shipShadow(vLocal, vLN), ts = cloudShadowL(vWorld);
+  vec3 sun = uSunColor * GROUND_SUN * max(dot(N, SUN), 0.0) * hs * ts;
+  vec3 Lm = uLampP[9].xyz - vLocal;
+  float ld = length(Lm);
+  vec3 lamp = uLampC[9] * uLampP[9].w * (0.3 + 0.7 * max(dot(vLN, Lm / ld), 0.0)) / (1.0 + ld * ld * 0.55);
+  vec3 col = alb * (sun + skyAmbient(N) * ao + lamp);
+  // brass and enamel catch the sun, the matt paint hardly
+  vec3 R = reflect(-V, N);
+  col += pow(max(dot(R, SUN), 0.0), mix(90.0, 12.0, rough)) * uSunColor * mix(0.03, 0.3, metal) * mix(vec3(1.0), alb * 1.6, metal) * hs * ts;
+  col += uWet * 0.06 * pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 4.0) * hazeColor(R);
+  col = mix(col, hazeColor(-V), hazeAmount(dist));
+  gl_FragColor = vec4(col, 1.0);
+}
+`;
+/* the nose canopy and the dome: reflections, the cabin faintly behind */
+export const MODEL_GLASS_FS = /* glsl */`
+#define SUN uSunDirL
+${COMMON}
+${MODEL_VARYINGS}
+void main() {
+  vec3 N = normalize(vN), V = normalize(-vWorld);
+  if (dot(N, V) < 0.0) N = -N;
+  float fres = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 3.0);
+  vec3 R = reflect(-V, N);
+  vec3 col = mix(hazeColor(R), skyAmbient(R) * 1.4, 0.4) * (0.55 + 0.45 * fres) + uSunColor * pow(max(dot(R, SUN), 0.0), 120.0) * 0.6
+           + vec3(0.52, 0.66, 0.78) * 0.08 * clamp(dot(uHorizon, vec3(0.3, 0.5, 0.2)) * 3.0, 0.1, 1.0);   // the glass's own tint, lit by the sky (little in space)
+  gl_FragColor = vec4(col, 0.34 + 0.5 * fres);
+}
+`;
+/* lamps: portholes (warm, brighter at night), Halden's eye (a slow pulse), the cool strips and emitters */
+export const MODEL_GLOW_FS = /* glsl */`
+#define SUN uSunDirL
+${COMMON}
+uniform vec3 uGlowC;
+uniform float uGlowK;   // 0 porthole, 1 Halden's eye, 2 cool light
+uniform float uEye;
+uniform float uThrust;  // the engines brighten with the throttle
+${MODEL_VARYINGS}
+void main() {
+  float dist = length(vWorld);
+  vec3 col = uGlowK < 0.5 ? uGlowC * (1.1 + 1.6 * uNight)
+           : uGlowK < 1.5 ? uGlowC * 2.6 * uEye
+           : uGlowC * (1.8 + 1.2 * uNight + 2.5 * uThrust) * (0.85 + 0.15 * sin(uTime * 1.7 + vLocal.z * 0.6));
+  col = mix(col, hazeColor(vWorld / dist), hazeAmount(dist));
+  gl_FragColor = vec4(col, 1.0);
+}
+`;
+export const MODEL_DEPTH_FS = /* glsl */`
+void main() { gl_FragColor = vec4(1.0); }
+`;

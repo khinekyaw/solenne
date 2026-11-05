@@ -145,9 +145,10 @@ export function furnishCottage(k: CottageKit) {
   box(DOOR_X + 0.78, 1.98, CD / 2 + 0.24, 0.1, 0.15, 0.1, C('#ffd9a0'), 8, { mode: 'out' });
   cyl(DOOR_X + 0.78, 2.1, CD / 2 + 0.24, 0.02, 0.09, 0.07, 4, PAL.iron, 7, { ry: Math.PI / 4, mode: 'out' });
   {
-    const bx = 0.75, bz = CD / 2 + 0.42, gy = Math.max(gLocal(bx, bz), -0.6);
-    box(bx, gy + 0.45, bz, 1.25, 0.06, 0.36, PAL.woodLight, 2, { grain: 0, mode: 'out' });
-    for (const s of [-0.5, 0.5]) box(bx + s, gy + 0.21, bz, 0.08, 0.45, 0.32, PAL.wood, 1, { mode: 'out' });
+    // the bench stands on the meadow (it falls away in front of the plinth): each leg down to its own ground
+    const bx = 0.75, bz = CD / 2 + 0.42, gl = [-0.5, 0.5].map((s) => gLocal(bx + s, bz)), seat = Math.max(...gl) + 0.45;
+    box(bx, seat, bz, 1.25, 0.06, 0.36, PAL.woodLight, 2, { grain: 0, mode: 'out' });
+    [-0.5, 0.5].forEach((s, i) => { const bot = gl[i] - 0.05; box(bx + s, (seat + bot) / 2, bz, 0.08, seat - bot, 0.32, PAL.wood, 1, { mode: 'out' }); });
   }
   for (let r = 0; r < 5; r++) for (let i = 0; i < 9 - r; i++) {
     const z = -2.45 + i * 0.19 + r * 0.095, x = CW / 2 + 0.38, gy = gLocal(x, z);

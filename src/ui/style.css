@@ -73,6 +73,22 @@ kbd {
   transition: transform 0.15s ease, opacity 0.2s ease;
 }
 .enter:hover:not(:disabled) { transform: translateY(-1px); }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 4px; }
+.actions .enter { margin-top: 0; }
+.enter.ghost { color: var(--ink); background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.24); box-shadow: none; }
+.enter.ghost:disabled { background: rgba(255, 255, 255, 0.06); }
+/* the showcase: nothing but the picture */
+body.showcase > :not(#gl):not(#exportNote) { display: none !important; }
+.enter.small { padding: 10px 16px; font-size: 13px; justify-self: stretch; width: 100%; }
+/* a video export: the 16:9 frame shown whole, and how far it has got */
+body.exporting #gl { object-fit: contain; background: #000; }
+#exportNote {
+  position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 20;
+  font: 500 12px/1 var(--ui); color: var(--ink); padding: 8px 14px; border-radius: 999px;
+  background: rgba(10, 18, 32, 0.7); border: 1px solid var(--edge);
+}
+#exportNote[hidden] { display: none; }
+body.showcase { cursor: none; }
 .enter:disabled { opacity: 0.6; cursor: progress; background: rgba(255, 255, 255, 0.82); }
 .enter:focus-visible, .chip:focus-visible, .seg button:focus-visible, input[type=range]:focus-visible { outline: 2px solid var(--sun); outline-offset: 3px; }
 .note { margin: 0; font-size: 12px; color: var(--ink-faint); }
@@ -150,6 +166,33 @@ input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 
 }
 .prompt { bottom: calc(150px + env(safe-area-inset-bottom, 0px)); color: var(--ink); gap: 8px; }
 .scope-bar { bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
+/* at the Wren's helm: a readout on top, the keys along the bottom */
+.helm-read {
+  position: fixed; z-index: 3; left: 50%; top: calc(16px + env(safe-area-inset-top, 0px)); transform: translateX(-50%);
+  display: flex; gap: 16px; white-space: nowrap;
+  font: 600 13px/1 var(--ui); color: var(--ink); font-variant-numeric: tabular-nums; letter-spacing: 0.04em;
+  padding: 8px 14px; border-radius: 12px; background: rgba(12, 30, 54, 0.42); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+}
+.helm-read b { color: var(--sun); font-weight: 600; }
+.helm-keys { flex-wrap: wrap; justify-content: center; white-space: normal; max-width: calc(100vw - 32px); }
+.helm-keys span { display: inline-flex; gap: 4px; align-items: center; }
+/* the navigation target: a ring on the body, or an arrow at the screen's edge pointing toward it */
+.nav-mark { position: fixed; z-index: 3; left: 0; top: 0; pointer-events: none; will-change: transform; }
+.nav-mark i {
+  position: absolute; left: -13px; top: -13px; width: 26px; height: 26px; border-radius: 50%;
+  border: 1.5px solid var(--sun); box-shadow: 0 0 10px rgba(255, 216, 137, 0.35);
+}
+.nav-mark.edge i { border-radius: 0; border: none; box-shadow: none; width: 0; height: 0; left: -9px; top: -9px;
+  border-left: 18px solid var(--sun); border-top: 9px solid transparent; border-bottom: 9px solid transparent; transform-origin: 9px 9px; }
+.nav-mark span {
+  position: absolute; left: 20px; top: -9px; white-space: nowrap;
+  font: 600 12px/1.3 var(--ui); color: var(--ink); font-variant-numeric: tabular-nums; letter-spacing: 0.03em;
+  padding: 3px 8px; border-radius: 8px; background: rgba(12, 30, 54, 0.5); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.nav-mark span b { color: var(--sun); font-weight: 600; }
+/* the system map: a full-screen orrery over the view */
+.sysmap { position: fixed; inset: 0; z-index: 4; width: 100vw; height: 100vh; cursor: crosshair; }
+
 /* setting circles: where the tube points, in degrees */
 .scope-circles {
   position: fixed; z-index: 3; left: 50%; top: calc(16px + env(safe-area-inset-top, 0px)); transform: translateX(-50%);

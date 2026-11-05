@@ -87,7 +87,7 @@ void main() {
   vec3 inC = alb * (sun * 1.7 + skyAmbient(N) * 0.2 * ao + uSunColor * 0.02 * ao + fire + lamp);
   vec3 col = mix(outC, inC, indoor);
   if (kind > 6.5 && kind < 7.5) col += pow(max(dot(reflect(-V, N), SUN), 0.0), 40.0) * uSunColor * 0.15 * hs;
-  col += (1.0 - indoor) * uWet * 0.06 * pow(1.0 - max(dot(N, V), 0.0), 4.0) * hazeColor(reflect(-V, N));
+  col += (1.0 - indoor) * uWet * 0.06 * pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 4.0) * hazeColor(reflect(-V, N));
   if (kind > 7.5) col = alb * 2.6;
   col = mix(col, hazeColor(-V), hazeAmount(dist));
   gl_FragColor = vec4(col, 1.0);
@@ -108,7 +108,7 @@ varying vec3 vN;
 void main() {
   vec3 N = normalize(vN), V = normalize(uCamPos - vWorld);
   if (dot(N, V) < 0.0) N = -N;
-  float fres = pow(1.0 - max(dot(N, V), 0.0), 3.0);
+  float fres = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 3.0);
   vec3 col = hazeColor(reflect(-V, N)) * (0.25 + 0.6 * fres) + vec3(1.0, 0.68, 0.35) * 0.06 * uLampI;
   gl_FragColor = vec4(col, 0.18 + 0.55 * fres);
 }

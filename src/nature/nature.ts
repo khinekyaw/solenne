@@ -77,10 +77,10 @@ export class Nature {
     this.flowers.geometry.instanceCount = flN * flN;
     this.motes.material.uniforms.uPx.value = Hpx / (2 * Math.tan(THREE.MathUtils.degToRad(fov / 2)));
   }
-  /** returns a readout of the blade count */
-  applyGrass() {
+  /** returns a readout of the blade count; thin < 1 lightens it (the showcase, when the frame rate needs it) */
+  applyGrass(thin = 1) {
     const q = QUALITY[settings.quality];
-    const k = 1 / Math.sqrt(settings.grassDensity / 100);
+    const k = 1 / Math.sqrt(settings.grassDensity / 100 * thin);
     const nr = q.near[0], fr = q.far[0], ns = q.near[1] * k, fs = q.far[1] * k;
     const nN = Math.min(1500, Math.ceil((2 * nr) / ns) + 2), fN = Math.min(1500, Math.ceil((2 * fr) / fs) + 2);
     const nu = this.grassNear.material.uniforms, fu = this.grassFar.material.uniforms;

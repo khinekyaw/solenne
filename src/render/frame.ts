@@ -26,7 +26,7 @@ export const shared = {
   uCamRel: { value: new THREE.Vector3() }, uRegionToL: { value: new THREE.Matrix3() },
   uCamBox: { value: new THREE.Vector3() },   // camera motion integrated in the local frame (world-locked rain/mote boxes)
   uTime: { value: 0 },
-  uCloudOff: { value: new THREE.Vector3() }, uCover: { value: 0 }, uDark: { value: 0 }, uFog: { value: 0 }, uWet: { value: 0 }, uFlash: { value: 0 }, uNight: { value: 0 }, uMoonlit: { value: 0 },
+  uCloudOff: { value: new THREE.Vector3() }, uCover: { value: 0 }, uClouds: { value: 0.5 }, uDark: { value: 0 }, uFog: { value: 0 }, uWet: { value: 0 }, uFlash: { value: 0 }, uNight: { value: 0 }, uMoonlit: { value: 0 },
   uWindPhase: { value: 0 }, uSwayPhase: { value: 0 },
   uWeather: { value: null as THREE.Texture | null }, uLand: { value: null as THREE.Texture | null }, uLandTop: { value: null as THREE.Texture | null },
   uWindDir: { value: new THREE.Vector2(0.86, 0.5).normalize() }, uWindStr: { value: 0.55 },
@@ -36,6 +36,8 @@ export const shared = {
   // the Wren: its own shadow map, and where it stands (flat x, z, cos, sin of its heading; ground height)
   uSShadow: { value: null as THREE.Texture | null }, uSShadowMat: { value: new THREE.Matrix4() },
   uShipXf: { value: new THREE.Vector4(1e5, 1e5, 1, 0) }, uShipY: { value: 0 },
+  uWash: { value: new THREE.Vector4(1e5, 1e5, 0, 1) },   // her lift jets' downwash on the grass: flat x, z, strength, radius
+  uCine: { value: 0 },   // 1 while the showcase is exported in cinema detail: fine shading the game leaves out
 };
 
 const tmp = new THREE.Vector3();

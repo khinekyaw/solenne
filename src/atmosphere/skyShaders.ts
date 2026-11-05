@@ -35,7 +35,7 @@ uniform vec3 uRegionUpL;
 uniform float uShellK;
 uniform float uFlatK;
 uniform int uDbg;   // debug: bit 0 sea, bit 1 towers, bit 2 cumulus (all on = 7)
-uniform vec4 uOccL;   // Lull: direction, angular radius (it can cover the sun)
+uniform float uSpace;   // far from Solenne: black sky, everything beyond visible (the far pass draws Solenne)
 varying vec2 vUv;
 
 #define TOP 1500.0
@@ -111,15 +111,14 @@ vec3 skyColor(vec3 rd, out float bright) {
   vec2 sh = normalize(SUN.xz + 1e-5), rh = normalize(rd.xz + 1e-5);
   col += vec3(0.5, 0.25, 0.13) * twi * pow(max(dot(sh, rh), 0.0), 3.0) * (1.0 - smoothstep(0.0, 0.35, gy)) * (1.0 - hiK);
   col *= bright;
-  // the disc itself, unless the planet or Lull is in the way
-  vec2 sg0 = shell(rd, SEA_TOP);
-  float occ = dot(rd, uOccL.xyz) > 0.0 ? smoothstep(uOccL.w * 0.985, uOccL.w * 1.015, asin(min(length(cross(rd, uOccL.xyz)), 1.0))) : 1.0;
-  // limb darkening, only noticeable through the telescope's solar filter
-  float rs = clamp(acos(min(mu, 1.0)) / 0.0245, 0.0, 1.0), limb = 0.45 + 0.55 * sqrt(1.0 - rs * rs);
-  if (!(sg0.x > 0.0)) col += mix(uSunColor, vec3(3.0, 2.85, 2.64), hiK) * 18.0 * smoothstep(0.99955, 0.99978, mu) * occ * limb;
+  // (the disc itself is a sphere in the full-resolution far pass, behind this sky's light)
   return col;
 }
 
+// how much of a tower column stands at weather value r (the Clouds setting moves the thresholds)
+float towerCov(float r) {
+  return smoothstep(cloudAmt(0.95, 0.73, 0.47) - cloudAmt(0.6, 0.4, 0.22) * uCover, cloudAmt(1.05, 0.82, 0.6) - cloudAmt(0.52, 0.34, 0.18) * uCover, r);
+}
 vec2 cloudField(vec3 p, bool hi) {
   float h = altL(p);
   vec3 P = toPF(p);
@@ -152,11 +151,11 @@ vec2 cloudField(vec3 p, bool hi) {
     vec3 q = P + uCloudOff * 0.7, qc = Pc + uCloudOff * 0.7;
     vec4 w = wx2(qc, 16000.0, vec2(0.61, 0.19));
     w.r = w.r * 0.82 + wx2(qc - uCloudOff * 1.4, 7000.0, vec2(0.13, 0.57)).b * 0.18;
-    // far sparser than the prototype's endless wall: from the air it buried the sea and the islands
-    float c = smoothstep(0.73 - 0.4 * uCover, 0.82 - 0.34 * uCover, w.r) * smoothstep(R0, R0 + 700.0, regionDist(p));
+    // by default far sparser than the prototype's endless wall (from the air it buried the sea and the islands)
+    float c = towerCov(w.r) * smoothstep(R0, R0 + 700.0, regionDist(p));
     c *= 1.0 - at.x;
     if (c > 0.001) {
-      float Hh = 220.0 + 680.0 * smoothstep(0.5, 0.9, w.r * 0.65 + w.g * 0.35);
+      float Hh = cloudAmt(180.0, 220.0, 300.0) + cloudAmt(500.0, 680.0, 1100.0) * smoothstep(cloudAmt(0.5, 0.5, 0.45), cloudAmt(0.9, 0.9, 0.85), w.r * 0.65 + w.g * 0.35);
       float hy = h - (SEA_TOP - 20.0);
       float colTop = Hh * pow(c, 0.45);
       vec3 sp = (q - normalize(P) * uTime * 3.6) / 1150.0;
@@ -179,7 +178,7 @@ vec2 cloudField(vec3 p, bool hi) {
     float c = nearCoverage(P);
     if (c > 0.001) {
       float hy = h - NEAR_BASE;
-      float colTop = (240.0 + 560.0 * uDark) * pow(c, 0.6);
+      float colTop = (cloudAmt(200.0, 240.0, 300.0) + 560.0 * uDark) * pow(c, 0.6);
       vec3 sp = (P + uCloudOff - normalize(P) * uTime * 3.0) / 540.0 + 0.37;
       float s = textureLod(uShape, sp, 0.0).r;
       float f = min((colTop - hy) / 60.0, hy / 20.0 + 0.4) + (s - 0.55) * 3.0;
@@ -285,19 +284,23 @@ vec4 shellClouds(vec3 rd) {
   palette(e, sunC, zen, hor);
   vec3 q = P + uCloudOff * 0.5;
   vec4 wb = wx2(q, 3300.0, vec2(0.23, 0.71));
-  vec2 at = atlasAt(up);
+  vec2 at = atlasSmooth(up);
   float land = max(regionLand(P), at.x);
   // towers and cumulus seen from above as bright puffs over the sea
   vec4 w = wx2(P + uCloudOff * 0.7, 16000.0, vec2(0.61, 0.19));
-  float tw = smoothstep(0.73 - 0.4 * uCover, 0.82 - 0.34 * uCover, w.r) * (1.0 - land) * smoothstep(R0, R0 + 700.0, regionDist(p));
+  float tw = towerCov(w.r) * (1.0 - land) * smoothstep(R0, R0 + 700.0, regionDist(p));
   float cu = nearCoverage(P);
+  // from far up, puffs a few pixels wide only shimmer: the banks carry the picture there
+  float far = smoothstep(40000.0, 220000.0, uCamAlt);
+  tw *= 1.0 - 0.85 * far; cu *= 1.0 - 0.85 * far;
   float lit = 0.35 + 0.65 * smoothstep(-0.1, 0.6, e);
   vec3 amb = (zen * 0.62 + hor * 0.36) * 0.9 + vec3(0.006, 0.01, 0.02) * uNight;
   vec3 sea = (sunC * 0.32 * lit + amb) * (0.82 + 0.3 * wb.a) * (1.0 - 0.35 * cu * smoothstep(0.0, 0.3, e));
   vec3 puff = (sunC * 0.48 * lit + amb * 1.1) * (0.9 + 0.25 * w.g);
   vec3 col = mix(sea, puff, max(tw * 0.85, cu * 0.75));
   // the deck where the banks lie (ragged edges), puffs anywhere else; land shows through the gaps
-  float seaA = smoothstep(0.3, 0.7, at.y + (wb.a - 0.5) * 0.5);
+  float fine = wx2(q, 900.0, vec2(0.37, 0.53)).a;   // frays the banks' edges finer than the atlas can (not from far up)
+  float seaA = smoothstep(0.32 - 0.08 * far, 0.68 + 0.08 * far, at.y + (wb.a - 0.5) * 0.45 + (fine - 0.5) * 0.24 * (1.0 - far));
   float a = max(seaA, max(smoothstep(0.2, 0.6, tw) * 0.9, smoothstep(0.3, 0.65, cu) * 0.85));
   float dist = s.x;
   float hz = 1.0 - exp(-dist * 0.00019 * airDensity(uCamAlt, SEA_TOP));
@@ -309,8 +312,9 @@ vec4 shellClouds(vec3 rd) {
 float ign(vec2 p) { return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715)))); }
 
 void main() {
+  if (uSpace > 0.5) { gl_FragColor = vec4(0.0, 0.0, 0.0, -1.0); pc_vis = vec4(1.0, 0.0, 0.0, 1.0); return; }
   vec2 ndc = vUv * 2.0 - 1.0;
-  vec4 v = uInvProj * vec4(ndc, 1.0, 1.0);
+  vec4 v = uInvProj * vec4(ndc, -1.0, 1.0);   // from the near plane: at the far one w cancels to 0 in float32 when far/near is huge
   vec3 rd = normalize((uCamWorld * vec4(normalize(v.xyz / v.w), 0.0)).xyz);
 
   float bright;
@@ -427,9 +431,9 @@ void main() {
   float starVis = bg.a > -1.5 ? max(-bg.a, 0.0) : 0.0;
   float vis = texture(uVis, vUv).r;
   if (starVis > 0.01 || vis > 0.003) {
-    vec4 v = uInvProj * vec4(vUv * 2.0 - 1.0, 1.0, 1.0);
+    vec4 v = uInvProj * vec4(vUv * 2.0 - 1.0, -1.0, 1.0);
     vec3 rd = normalize((uCamWorld * vec4(normalize(v.xyz / v.w), 0.0)).xyz);
-    // planets, moons and the corona sit behind the sky's own light, seen through the air and clouds
+    // the sun, planets, moons and the corona sit behind the sky's own light, seen through the air and clouds
     vec4 far = vis > 0.003 ? farBodies(rd) : vec4(0.0);
     col += (far.rgb + corona(rd) * (1.0 - far.a)) * vis;
     if (starVis > 0.01) col += stars(normalize(uLtoStar * rd)) * starVis * (1.0 - far.a);

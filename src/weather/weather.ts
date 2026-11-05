@@ -180,11 +180,12 @@ export class Weather {
     setTimeout(() => this.onThunder(dist), Math.min(dist / 343, 5) * 1000);
   }
   /** returns the rain intensity at the player */
-  update(dt: number, o: { inRegion: boolean; groundRel: number; houseTop: number }) {
-    if (settings.weather === 'dynamic') {
+  update(dt: number, o: { inRegion: boolean; groundRel: number; houseTop: number; fair?: boolean; drift?: number }) {
+    if (o.fair) wx.current = 'sunny';   // the showcase: fair weather, the setting untouched
+    else if (settings.weather === 'dynamic') {
       if ((wx.timer -= dt) <= 0) { wx.current = pickWeighted(WX_NEXT[wx.current]); wx.timer = 70 + Math.random() * 100; this.onLabel(); }
     } else wx.current = settings.weather;
-    const tg = WX[wx.current], k = 1 - Math.exp(-dt / (settings.weather === 'dynamic' ? 14 : 4));
+    const tg = WX[wx.current], k = 1 - Math.exp(-dt / (o.fair ? 0.4 : settings.weather === 'dynamic' ? 14 : 4));   // (fair: clears during the fade-in)
     for (const p of ['cover', 'dark', 'rain', 'wind', 'fog', 'bolt', 'still'] as const) wx[p] += (tg[p] - wx[p]) * k;
     // weather lives below the clouds: above them it thins out, and from orbit it is gone
     const hiK = 1 - smoothstep(1200, 5000, frame.alt);
@@ -198,7 +199,8 @@ export class Weather {
     shared.uWindPhase.value += dt * (2.5 + 8 * eff);
     shared.uSwayPhase.value += dt * (1.8 + 2 * eff);
     const wd = shared.uWindDir.value;
-    shared.uCloudOff.value.addScaledVector(new THREE.Vector3(7.5, 0, 2.4).applyMatrix3(frame.LtoPF), dt * (0.7 + 1.6 * eff));
+    shared.uCloudOff.value.addScaledVector(new THREE.Vector3(7.5, 0, 2.4).applyMatrix3(frame.LtoPF), dt * (0.7 + 1.6 * eff) * (o.drift ?? 1));
+    shared.uClouds.value = settings.clouds / 100;   // (the showcase too: its weather is fair, its amount of cloud yours)
     shared.uCover.value = wx.cover * hiK; shared.uDark.value = wx.dark * hiK; shared.uFog.value = wx.fog * lowK; shared.uWet.value = wx.wet;
 
     const q = QUALITY[settings.quality], ru = this.rain.material.uniforms;

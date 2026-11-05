@@ -5,7 +5,7 @@ import { COMMON } from '../render/glsl';
 import { shared, frame, pfMatrix } from '../render/frame';
 import { FACES, SPAWN_FACE, faceOf, flatToPF } from '../planet/solenne';
 import { planetHeight } from '../planet/heights';
-import { buildKits, type Kit } from './ruinKits';
+import { buildKits, RANDOM_KITS, type Kit } from './ruinKits';
 
 /* =========================================================================
    Ruins scattered over Solenne, most of them in the lowland under the
@@ -16,6 +16,8 @@ import { buildKits, type Kit } from './ruinKits';
 const RUIN_VS = /* glsl */`
 attribute vec3 aColor;
 attribute vec4 aInfo;
+attribute vec3 aPivot;
+uniform float uTime;
 varying vec3 vRel;
 varying vec3 vN;
 varying vec3 vLocal;
@@ -27,9 +29,17 @@ void main() {
   #ifdef USE_INSTANCING
   m = m * instanceMatrix;
   #endif
-  vec4 wp = m * vec4(position, 1.0);
-  vRel = wp.xyz; vN = normalize(mat3(m) * normal);
-  vLocal = position; vLN = normal; vColor = aColor; vInfo = aInfo;
+  vec3 pos = position, nrm = normal;
+  if (aInfo.z > 0.0) {
+    // a floating piece of the old world: it rocks a little about its centre and bobs, as if gravity forgot it
+    float ph = aInfo.z * 6.2831853, a = 0.07 * sin(uTime * 0.17 + ph), c = cos(a), s = sin(a);
+    vec3 d = pos - aPivot;
+    d.xy = mat2(c, s, -s, c) * d.xy; nrm.xy = mat2(c, s, -s, c) * nrm.xy;
+    pos = aPivot + d + vec3(0.12 * sin(uTime * 0.23 + ph), 0.4 * sin(uTime * 0.29 + ph * 1.7), 0.15 * sin(uTime * 0.19 + ph * 0.6));
+  }
+  vec4 wp = m * vec4(pos, 1.0);
+  vRel = wp.xyz; vN = normalize(mat3(m) * nrm);
+  vLocal = pos; vLN = nrm; vColor = aColor; vInfo = aInfo;
   gl_Position = projectionMatrix * viewMatrix * wp;
 }
 `;
@@ -69,8 +79,23 @@ void main() {
   float streak = texture(uWeather, vec2(fp.x * 0.35, fp.y * 0.08) + vInfo.y).r;   // damp streaks running down the faces
   alb *= 0.8 + 0.2 * smoothstep(0.3, 0.7, streak);
   float moss = smoothstep(0.5, 0.85, dot(N, up) * 0.55 + mossN * 0.55 + streak * 0.25 + deck * 0.3 + (1.0 - smoothstep(0.0, 1.8, vLocal.y)) * 0.3);
-  if (vInfo.x < 1.5) alb = mix(alb, mix(vec3(0.07, 0.13, 0.055), vec3(0.12, 0.17, 0.07), mossN), moss * 0.85);
-  else alb = vColor * (0.8 + 0.4 * vInfo.y);
+  vec3 mossC = mix(vec3(0.07, 0.13, 0.055), vec3(0.12, 0.17, 0.07), mossN);
+  float kind = vInfo.x, spec = 0.0;
+  if (kind < 1.5) alb = mix(alb, mossC, moss * 0.85);
+  else if (kind < 2.5) alb = vColor * (0.8 + 0.4 * vInfo.y);
+  else if (kind < 3.5) {
+    // the old ceramic: smooth and pale, flaked off in places down to dark stone, moss only low down
+    alb = vColor * (0.82 + 0.1 * grain + 0.05 * vInfo.y);
+    float flake = smoothstep(0.66, 0.7, texture(uWeather, fp * 0.016 + vInfo.y * 0.3).a * 0.75 + texture(uWeather, fp * 0.07).a * 0.25 + 0.3 * (1.0 - smoothstep(0.0, 12.0, vLocal.y)) - 0.06);
+    alb = mix(alb, vec3(0.28, 0.29, 0.3) * (0.85 + 0.3 * pit), flake);
+    alb *= 0.9 + 0.1 * smoothstep(0.3, 0.7, streak);
+    alb = mix(alb, mossC, moss * 0.8 * (1.0 - smoothstep(2.0, 7.0, vLocal.y)));
+    spec = 0.12 * (1.0 - flake);
+  } else if (kind < 4.5) {
+    // brass, gone dull and a little green
+    alb = mix(vColor, vec3(0.3, 0.46, 0.38), smoothstep(0.6, 0.9, texture(uWeather, fp * 0.08 + 0.2).a) * 0.4);
+    spec = 0.35;
+  }
 
   float ndl = max(dot(N, SUN), 0.0);
   vec3 sun = uSunColor * GROUND_SUN * ndl * cloudShadowPF(pPF, h) * (1.0 - 0.96 * deck);
@@ -78,8 +103,16 @@ void main() {
   vec3 amb = mix(skyAmbientY(dot(N, up)), deckL * (0.8 + 0.4 * (dot(N, up) * 0.5 + 0.5)), deck);
   float ao = mix(0.62, 1.0, smoothstep(-0.3, 1.6, vLocal.y));
   vec3 col = alb * (sun + amb * ao);
+  // a soft sheen on the glaze and the metal, from the sky and the sun
+  float fres = pow(1.0 - max(dot(N, V), 0.0), 4.0);
+  col += spec * (uSunColor * GROUND_SUN * (1.0 - 0.96 * deck) * pow(max(dot(reflect(-V, N), SUN), 0.0), 24.0) + amb * fres * 0.6);
+  // the Gate's seam: it breathes slowly, and its light falls on the band, the brass and the ivy close by
+  float breath = 0.82 + 0.18 * sin(uTime * 0.55) + 0.06 * sin(uTime * 1.7 + 1.0);
+  vec3 seam = vec3(0.56, 0.94, 0.85);
+  col += alb * seam * vInfo.w * 0.5 * breath;
+  if (kind > 4.5) col = seam * (1.25 + 0.55 * smoothstep(0.75, 1.0, breath)) * breath * (0.85 + 0.15 * grain);
   col = mix(col, hazeColor(-V), hazeAmountAlt(dist, uCamAlt, h) * (1.0 - deck));
-  col = mix(col, deckL * 0.9, murkAmount(h, dist) * cover);
+  col = mix(col, deckL * 0.9, murkAmount(h, dist) * cover * (kind > 4.5 ? 0.6 : 1.0));
   col = mix(col, bg, mist);
   gl_FragColor = vec4(col, 1.0);
 }
@@ -89,7 +122,8 @@ void main() {
 type Site = { kit: number; face: number; anchor: THREE.Vector3; alt: number; basis: THREE.Matrix4; xf: THREE.Matrix4; inv: THREE.Matrix4; scale: number };
 const CELL = 900, VIEW = 5500, MAX_PER_KIT = 48;
 // a few sites placed by hand near home, so the first walk off the cliff finds something
-const HOME_SITES: [number, number, number, number][] = [[920, 360, 0, 0.4], [-860, -520, 2, 2.1], [260, 980, 1, 4.0], [-420, 900, 3, 1.2]];
+// (the first is the Gate, facing the showcase's camera so the home plateau shows through it)
+const HOME_SITES: [number, number, number, number][] = [[920, 360, 4, 0.84], [-860, -520, 2, 2.1], [260, 980, 1, 4.0], [-420, 900, 3, 1.2]];
 
 export class Ruins {
   kits: Kit[];
@@ -139,7 +173,7 @@ export class Ruins {
       const h = planetHeight(face, X, Z), roll = R();
       // most under the clouds, a few up on the highlands
       if ((h < SEA_BASE - 70 && roll < 0.5) || (h > SEA_TOP + 15 && roll < 0.14))
-        site = this.makeSite(face, X, Z, Math.floor(R() * this.kits.length), R() * Math.PI * 2, 0.85 + R() * 0.4);
+        site = this.makeSite(face, X, Z, Math.floor(R() * RANDOM_KITS), R() * Math.PI * 2, 0.85 + R() * 0.4);
     }
     this.cells.set(key, site);
     return site;

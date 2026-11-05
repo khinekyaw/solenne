@@ -4,6 +4,20 @@ import { FACE_DATA } from '../planet/faces';
 const f1 = (x: number) => x.toFixed(1);
 const vec3s = (k: number) => FACE_DATA.map((f) => `vec3(${f[k].toFixed(1)}, ${f[k + 1].toFixed(1)}, ${f[k + 2].toFixed(1)})`).join(', ');
 
+/** the cube-face atlases (land, highest ground) by direction: shared by COMMON and the far pass (Solenne from afar) */
+export const ATLAS_GLSL = /* glsl */`
+const vec3 FN[6] = vec3[6](${vec3s(0)});
+const vec3 FU[6] = vec3[6](${vec3s(3)});
+const vec3 FV[6] = vec3[6](${vec3s(6)});
+vec2 atlasUV(vec3 d, float res) {
+  vec3 a = abs(d);
+  int fi = a.x >= a.y && a.x >= a.z ? (d.x > 0.0 ? 0 : 1) : (a.y >= a.z ? (d.y > 0.0 ? 2 : 3) : (d.z > 0.0 ? 4 : 5));
+  float dn = dot(d, FN[fi]);
+  vec2 uv = clamp(vec2(dot(d, FU[fi]), dot(d, FV[fi])) / dn * 0.5 + 0.5, 0.5 / res, 1.0 - 0.5 / res);
+  return vec2((float(fi) + uv.x) / 6.0, uv.y);
+}
+`;
+
 /* =========================================================================
    Shared GLSL. Two families of shaders use it:
    - region shaders (grass, flowers, cottage): prototype math in the spawn
@@ -27,12 +41,16 @@ uniform float uCamAlt;
 uniform float uTime;
 uniform vec3 uCloudOff;
 uniform float uCover;
+uniform float uClouds;   // the Clouds setting: 0 clear, 0.5 the game's default sky, 1 the prototype's towering one
+// a cloud parameter at the current setting: from its clear-sky value through the default to the prototype's
+float cloudAmt(float clear, float def, float proto) { return uClouds < 0.5 ? mix(clear, def, uClouds * 2.0) : mix(def, proto, uClouds * 2.0 - 1.0); }
 uniform float uDark;
 uniform float uFog;
 uniform float uWet;
 uniform float uFlash;
 uniform float uNight;
 uniform float uMoonlit;   // Lull's light on the night sky (phase × height)
+uniform float uCine;      // the film's cinema detail (export only)
 uniform sampler2D uWeather;
 uniform sampler2D uLand;
 uniform sampler2D uLandTop;
@@ -91,17 +109,24 @@ vec4 wx2(vec3 p, float s, vec2 o) { return wx2s(p, vec2(1.0 / s), o); }
 // atlases of the six cube faces side by side (res texels per face). uLand: r = highland above the
 // cloud sea, g = cloud-sea cover. uLandTop: highest ground nearby (conservative, so mountains never
 // poke through what it clears)
-const vec3 FN[6] = vec3[6](${vec3s(0)});
-const vec3 FU[6] = vec3[6](${vec3s(3)});
-const vec3 FV[6] = vec3[6](${vec3s(6)});
-vec2 atlasUV(vec3 d, float res) {
+${ATLAS_GLSL}
+vec2 atlasAt(vec3 d) { return textureLod(uLand, atlasUV(d, LAND_RES), 0.0).rg; }
+// the same, through a cubic B-spline (four bilinear taps, kept inside the face): seen from orbit a texel spans
+// several pixels, and thresholds on plain bilinear data come out as polygons
+vec2 atlasSmooth(vec3 d) {
   vec3 a = abs(d);
   int fi = a.x >= a.y && a.x >= a.z ? (d.x > 0.0 ? 0 : 1) : (a.y >= a.z ? (d.y > 0.0 ? 2 : 3) : (d.z > 0.0 ? 4 : 5));
-  float dn = dot(d, FN[fi]);
-  vec2 uv = clamp(vec2(dot(d, FU[fi]), dot(d, FV[fi])) / dn * 0.5 + 0.5, 0.5 / res, 1.0 - 0.5 / res);
-  return vec2((float(fi) + uv.x) / 6.0, uv.y);
+  vec2 f = (vec2(dot(d, FU[fi]), dot(d, FV[fi])) / dot(d, FN[fi]) * 0.5 + 0.5) * LAND_RES - 0.5;
+  vec2 i = floor(f), t = f - i, t2 = t * t, t3 = t2 * t;
+  vec2 w0 = (1.0 - 3.0 * t + 3.0 * t2 - t3) / 6.0, w1 = (4.0 - 6.0 * t2 + 3.0 * t3) / 6.0;
+  vec2 w2 = (1.0 + 3.0 * t + 3.0 * t2 - 3.0 * t3) / 6.0, w3 = t3 / 6.0;
+  vec2 g0 = w0 + w1, g1 = w2 + w3, h0 = i + 0.5 - 1.0 + w1 / g0, h1 = i + 0.5 + 1.0 + w3 / g1;
+  float lo = 0.5, hi = LAND_RES - 0.5, ff = float(fi);
+  #define AT(x, y) textureLod(uLand, vec2((ff + clamp(x, lo, hi) / LAND_RES) / 6.0, clamp(y, lo, hi) / LAND_RES), 0.0).rg
+  vec2 r = g0.y * (g0.x * AT(h0.x, h0.y) + g1.x * AT(h1.x, h0.y)) + g1.y * (g0.x * AT(h0.x, h1.y) + g1.x * AT(h1.x, h1.y));
+  #undef AT
+  return r;
 }
-vec2 atlasAt(vec3 d) { return textureLod(uLand, atlasUV(d, LAND_RES), 0.0).rg; }
 float groundTopAt(vec3 d) { return textureLod(uLandTop, atlasUV(d, LAND_TOP_RES), 0.0).r * LAND_TOP; }
 
 // two weather layers drifting at different speeds and directions, so clouds grow, merge and fade
@@ -110,12 +135,14 @@ float nearCoverage(vec3 pPF) {
   pPF = d * PLANET_R;
   vec4 w = wx2(pPF + uCloudOff, 5600.0, vec2(0.37, 0.11));
   float w2 = wx2(pPF + vec3(-uCloudOff.z, 0.0, uCloudOff.x) * 0.6, 2600.0, vec2(0.71, 0.29)).g;
-  float c = smoothstep(0.71 - 0.53 * uCover, 0.9 - 0.38 * uCover, (w.b * 0.7 + w.r * 0.3) * 0.78 + w2 * 0.22);
+  float c = smoothstep(cloudAmt(0.95, 0.71, 0.62) - cloudAmt(0.7, 0.53, 0.44) * uCover, cloudAmt(1.1, 0.9, 0.84) - cloudAmt(0.55, 0.38, 0.32) * uCover,
+                       (w.b * 0.7 + w.r * 0.3) * 0.78 + w2 * 0.22);
   // none where the ground reaches up toward the cloud base: the layer would cut through the mountain
   return c * smoothstep(NEAR_BASE - 100.0, NEAR_BASE - 220.0, groundTopAt(d));
 }
 // shadow of the cumulus layer at a planet-fixed point of altitude h
 float cloudShadowPF(vec3 pPF, float h) {
+  if (h > NEAR_BASE + 1200.0) return 1.0;   // above the cumulus (and far out in space, where uCamPF is too coarse to trace)
   vec3 up = normalize(pPF);
   float e = dot(uSunDir, up);
   vec3 q = pPF + uSunDir * ((NEAR_BASE + 90.0 - h) / max(e, 0.1));

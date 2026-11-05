@@ -25,7 +25,8 @@ export const EYE = 1.68;
 export const ORBIT_A = 2.0e9;                // Solenne's mean distance from its sun (m)
 export const YEAR_DAYS = 32;                 // a year of 32 days: four seasons of eight
 export const OBLIQUITY = 16 * Math.PI / 180; // axial tilt: noon sun at home 26°–58° through the year
-export const SUN_ANG = 1.4 * Math.PI / 180;  // apparent radius of the sun's disc (matches the sky shader)
+export const SUN_ANG = 1.4 * Math.PI / 180;  // apparent radius of the sun's disc seen from Solenne
+export const FAR_SOL = 4.0e6;                // m from Solenne's centre: beyond, the far pass draws it and the near systems sleep
 export const MAP_W = 1024, MAP_H = 512;      // baked surface maps of the far bodies (equirectangular)
 export const RING_W = 512;                   // ring profiles, inner to outer edge
 
@@ -43,6 +44,10 @@ export const QUALITY: Record<string, Quality> = {
   low:    { pr: 0.85, cloud: 0.34, steps: 70,  stepK: 0.030, near: [17, 0.15], far: [60, 0.44],  msaa: 2, flowersR: 26, bloom: 0.5, drops: 3500 },
   medium: { pr: 1.25, cloud: 0.5,  steps: 100, stepK: 0.022, near: [25, 0.12], far: [85, 0.34],  msaa: 4, flowersR: 40, bloom: 0.6, drops: 7000 },
   high:   { pr: 2.0,  cloud: 0.62, steps: 130, stepK: 0.016, near: [32, 0.10], far: [110, 0.30], msaa: 4, flowersR: 52, bloom: 0.6, drops: 12000 },
+  // the showcase's video export only (never a player setting): drawn at twice the size and scaled down (MSAA kept:
+  // without it the post chain's depth texture fails); clouds at the full output resolution and marched finer,
+  // grass further out on high's lattice (so the blades at the lens stand where the shots were framed)
+  cinema: { pr: 1.0,  cloud: 0.5,  steps: 200, stepK: 0.011, near: [32, 0.10], far: [160, 0.30], msaa: 4, flowersR: 75, bloom: 0.6, drops: 12000 },
 };
 
 export const isTouch = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches && !matchMedia('(pointer: fine)').matches;

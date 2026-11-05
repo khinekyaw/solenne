@@ -1,8 +1,9 @@
 import * as THREE from 'three';
-import { PLANET_R, GM, DAY_SECONDS, ORBIT_A, YEAR_DAYS, OBLIQUITY, SUN_ANG, ATMO_H, ATMO_TOP } from '../config';
+import { PLANET_R, GM, DAY_SECONDS, ORBIT_A, YEAR_DAYS, OBLIQUITY, SUN_ANG, ATMO_H, ATMO_TOP, FAR_SOL } from '../config';
 import { smoothstep } from '../core/math';
 import { AXIS, MERIDIAN, EAST0, hourAngle } from '../planet/solenne';
 import { type Elements, orbitPos, orbitNormal, meanMotion, gmFor, meanFromTrue } from './kepler';
+import { SunActivity } from './sun';
 
 /* =========================================================================
    The Seren system: a sun, five planets and three moons on Keplerian rails.
@@ -17,13 +18,14 @@ export const YEAR = YEAR_DAYS * D;
 export const GM_STAR = gmFor(AU, YEAR);
 export const STAR_R = AU * Math.tan(SUN_ANG);
 const R_ORRIN = 3.84e7;
+const gR2 = (g: number, R: number) => g * R * R;   // GM from surface gravity (the compressed bodies keep game-friendly g)
 const GM_ORRIN = gmFor(5 * R_ORRIN, 1.3 * D);
 // sunlight above the air (the sky shader's orbital sun) × the same soft 0.4 the ground gets (GROUND_SUN)
 const SUN_SPACE: [number, number, number] = [3.0 * 0.4, 2.85 * 0.4, 2.64 * 0.4];
 
 type OrbitDef = { a: number; e: number; i: number; node: number; peri: number; L: number; nodeRate?: number; equatorial?: boolean };
 export type Look = {
-  kind: 0 | 1 | 2;                       // 0 airless rock, 1 gas giant, 2 rock with a thin atmosphere
+  kind: 0 | 1 | 2 | 4;                   // 0 airless rock, 1 gas giant, 2 rock with a thin atmosphere, 4 Solenne (from its land atlas)
   layer: number;                         // surface map in the baked texture array
   tint: [number, number, number];        // albedo multiplier
   haze?: [number, number, number, number];   // limb haze colour + strength
@@ -42,17 +44,18 @@ export type BodyDef = {
 export const STAR = 0, CINDER = 1, SOLENNE = 2, LULL = 3, VERRAN = 4, ORRIN = 5, PIP = 6, WICK = 7, VAEL = 8;
 export const BODIES: BodyDef[] = [
   { name: 'Seren', about: 'The sun', parent: -1, radius: STAR_R, GM: GM_STAR },
-  { name: 'Cinder', about: 'A scorched little world close to the sun, an evening and morning star', parent: STAR, radius: 2.0e6,
+  { name: 'Cinder', about: 'A scorched little world close to the sun, an evening and morning star', parent: STAR, radius: 2.0e6, GM: gR2(3.7, 2.0e6),
     orbit: { a: 0.42 * AU, e: 0.12, i: 3.1 * DEG, node: 0.8, peri: 0.9, L: 100 * DEG },
     spin: { period: 21 * D, tilt: 0.02, az: 0 },
     look: { kind: 0, layer: 1, tint: [0.62, 0.55, 0.5], relief: 0.8 } },
   { name: 'Solenne', about: 'Home', parent: STAR, radius: PLANET_R, GM,
-    orbit: { a: AU, e: 0.017, i: 0, node: 0, peri: 1.2, L: 180 * DEG } },
-  { name: 'Lull', about: "Solenne's moon; it has always shown home the same face", parent: SOLENNE, radius: 1.62e5,
+    orbit: { a: AU, e: 0.017, i: 0, node: 0, peri: 1.2, L: 180 * DEG },
+    look: { kind: 4, layer: 0, tint: [1, 1, 1], haze: [0.42, 0.62, 0.95, 0.75] } },   // drawn by the far pass only from beyond FAR_SOL
+  { name: 'Lull', about: "Solenne's moon; it has always shown home the same face", parent: SOLENNE, radius: 1.62e5, GM: gR2(1.6, 1.62e5),
     orbit: { a: 6.0e6, e: 0.05, i: 5.2 * DEG, node: 2.1, peri: 0.6, L: 61.5 * DEG, nodeRate: -2 * Math.PI / (96 * D) },
     tidal: true,
     look: { kind: 0, layer: 0, tint: [0.5, 0.49, 0.475], relief: 1, shine: 0.05 } },
-  { name: 'Verran', about: 'A cold red desert with thin pink skies and white poles', parent: STAR, radius: 3.46e6,
+  { name: 'Verran', about: 'A cold red desert with thin pink skies and white poles', parent: STAR, radius: 3.46e6, GM: gR2(3.7, 3.46e6),
     orbit: { a: 1.55 * AU, e: 0.09, i: 1.8 * DEG, node: 0.4, peri: 4.6, L: 230 * DEG },
     spin: { period: 1.05 * D, tilt: 0.42, az: 2.0 },
     look: { kind: 2, layer: 2, tint: [0.62, 0.6, 0.6], haze: [0.95, 0.62, 0.5, 0.5], relief: 0.6 } },
@@ -60,20 +63,21 @@ export const BODIES: BodyDef[] = [
     orbit: { a: 3.2 * AU, e: 0.05, i: 1.3 * DEG, node: 1.7, peri: 0.3, L: 165 * DEG },
     spin: { period: 0.42 * D, tilt: 22 * DEG, az: 175 * DEG },
     look: { kind: 1, layer: 3, tint: [0.8, 0.8, 0.8], haze: [0.78, 0.72, 0.6, 0.45], ring: [1.3, 2.3, 0, 1] } },
-  { name: 'Pip', about: 'An icy moon of Orrin', parent: ORRIN, radius: 1.4e6,
+  { name: 'Pip', about: 'An icy moon of Orrin', parent: ORRIN, radius: 1.4e6, GM: gR2(1.3, 1.4e6),
     orbit: { a: 5 * R_ORRIN, e: 0.01, i: 0, node: 0, peri: 0, L: 40 * DEG, equatorial: true }, tidal: true,
     look: { kind: 0, layer: 1, tint: [1.05, 1.08, 1.12] } },
-  { name: 'Wick', about: 'A dark moon of Orrin', parent: ORRIN, radius: 1.9e6,
+  { name: 'Wick', about: 'A dark moon of Orrin', parent: ORRIN, radius: 1.9e6, GM: gR2(1.5, 1.9e6),
     orbit: { a: 9.5 * R_ORRIN, e: 0.02, i: 0, node: 0, peri: 1, L: 250 * DEG, equatorial: true }, tidal: true,
     look: { kind: 0, layer: 1, tint: [0.42, 0.36, 0.32] } },
-  { name: 'Vael', about: 'A pale sea-green ice giant at the edge of the system', parent: STAR, radius: 2.15e7,
+  { name: 'Vael', about: 'A pale sea-green ice giant at the edge of the system', parent: STAR, radius: 2.15e7, GM: gR2(11, 2.15e7),
     orbit: { a: 5.4 * AU, e: 0.04, i: 2.4 * DEG, node: 0.2, peri: 2.6, L: 200 * DEG },
     spin: { period: 0.7 * D, tilt: 0.9, az: 40 * DEG },
     look: { kind: 1, layer: 4, tint: [0.78, 0.8, 0.82], haze: [0.62, 0.86, 0.9, 0.55], ring: [1.65, 2.0, 1, 0.45] } },
 ];
-export const FAR_MAX = 8;
-/** bodies drawn by the far pass (sorted nearest first each frame, so a nearer disc covers the ones behind) */
-const FAR_LIST = [LULL, CINDER, VERRAN, ORRIN, PIP, WICK, VAEL];
+export const FAR_MAX = 9;
+/** bodies drawn by the far pass (sorted nearest first each frame, so a nearer disc covers the ones behind; the sun too,
+    and Solenne itself once you are far enough away) */
+const FAR_LIST = [STAR, SOLENNE, LULL, CINDER, VERRAN, ORRIN, PIP, WICK, VAEL];
 /** mean albedo of each baked surface map, for bodies smaller than a pixel */
 export const MAP_ALBEDO = [0.55, 0.5, 0.6, 0.72, 0.7];   // replaced by the measured means once the maps are baked
 export const MAP_RANGE = [0, 0, 0, 0, 0];                 // height range of each map (body radii), for the relief shading
@@ -81,7 +85,7 @@ export const MAP_RANGE = [0, 0, 0, 0, 0];                 // height range of eac
 type Body = { def: BodyDef; el: Elements | null; pos: THREE.Vector3; rel: THREE.Vector3; pole: THREE.Vector3; mer: THREE.Vector3; m0: THREE.Vector3 };
 
 const v = () => new THREE.Vector3();
-const tmp = v(), tmp2 = v(), tmp3 = v(), sunL = v();
+const tmp = v(), tmp2 = v(), tmp3 = v(), sunL = v(), tmpP = v(), tmpV = v();
 const SPIN_P = new THREE.Vector3(0, Math.sin(OBLIQUITY), Math.cos(OBLIQUITY));   // Solenne's north pole in I
 const EQ1 = new THREE.Vector3(1, 0, 0), EQ2 = new THREE.Vector3().crossVectors(SPIN_P, EQ1);   // equatorial basis in I
 
@@ -123,6 +127,12 @@ export class StarSystem {
   camI = v();
   eclipse = 1;            // fraction of the sun's disc left uncovered by Lull, seen from the camera
   moonlit = 0;            // how much Lull lights the night (phase × height in the sky)
+  /** the sun's spin, spots, filaments and flares (M6) */
+  sun = new SunActivity();
+  /** the sun's disc-centre radiance (rgb) and how far the h-alpha filter is in (setSunLight) */
+  private sunRad = new THREE.Vector4(54, 51, 47, 0);
+  private starSlot = 0;
+  sunToCam = v();          // unit direction from the sun to the camera (inertial)
   dirL = BODIES.map(() => new THREE.Vector3());   // each far body's direction from the camera (L)
   angL = BODIES.map(() => 0);                      // and its angular radius
   private order = FAR_LIST.slice();
@@ -140,6 +150,7 @@ export class StarSystem {
     uBK: { value: Array.from({ length: FAR_MAX }, () => new THREE.Vector4()) },   // albedo tint, mean albedo of the map
     uSunL: { value: new THREE.Vector4(0, 1, 0, 1) },   // sun direction from the camera (L), uncovered fraction
     uOccL: { value: new THREE.Vector4(0, -1, 0, 0) },  // Lull: direction (L), angular radius — masks the sun's disc
+    ...this.sun.uniforms,
   };
   private ItoL = new THREE.Matrix3();
 
@@ -200,6 +211,19 @@ export class StarSystem {
     return this;
   }
 
+  /** a body's position (inertial, relative to the sun) at any time t, without touching the current state */
+  posAt(k: number, t: number, out = new THREE.Vector3()): THREE.Vector3 {
+    const b = this.bodies[k];
+    if (!b.el) return out.set(0, 0, 0);
+    this.posAt(b.def.parent, t, out);
+    return out.add(orbitPos(b.el, t, tmpP));
+  }
+  /** a body's velocity (inertial, metres per game second) at time t */
+  velAt(k: number, t: number, out = new THREE.Vector3()) {
+    this.posAt(k, t + 1, out);
+    return out.sub(this.posAt(k, t - 1, tmpV)).multiplyScalar(0.5);
+  }
+
   /** where a body is seen from a planet-fixed point: unit direction in planet-fixed axes, distance */
   dirPF(k: number, fromPF: THREE.Vector3, out = new THREE.Vector3()) {
     const camI = tmp.copy(fromPF).applyMatrix3(this.PFtoI).add(this.bodies[SOLENNE].pos);
@@ -214,6 +238,12 @@ export class StarSystem {
     const rm = Math.asin(this.bodies[LULL].def.radius / dm);
     const sep = Math.acos(Math.min(1, tmp2.dot(this.sunPF)));
     return discOverlap(SUN_ANG, rm, sep);
+  }
+
+  /** the sun's disc-centre radiance as the camera sees it (through the air) and the h-alpha filter (0 … 1) */
+  setSunLight(r: number, g: number, b: number, ha: number) {
+    this.sunRad.set(r, g, b, ha);
+    this.uniforms.uBT.value[this.starSlot].copy(this.sunRad);
   }
 
   /** what the telescope's label says about body k, seen from the camera (call after view()) */
@@ -243,6 +273,10 @@ export class StarSystem {
     U.uSunL.value.set(sunL.x, sunL.y, sunL.z, 1);
     for (const k of FAR_LIST) this.dist[k] = this.bodies[k].pos.distanceTo(this.camI);
     this.order.sort(this.byDist);
+    const sunAng = Math.asin(Math.min(STAR_R / this.camI.length(), 1));
+    this.sunToCam.copy(this.camI).normalize();   // the sun sits at the origin
+    this.sun.update(this.t);
+    this.sun.view(ItoL, this.sunToCam);
     let n = 0;
     for (const k of this.order) {
       const b = this.bodies[k], L = b.def.look!;
@@ -251,7 +285,19 @@ export class StarSystem {
       this.dirL[k].copy(rel);
       const s = b.def.radius / dist;
       this.angL[k] = Math.asin(Math.min(s, 1));
+      if (k === SOLENNE && dist < FAR_SOL) continue;   // close by, it is the planet under you (quadtree, air, clouds)
       U.uBC.value[n].set(rel.x, rel.y, rel.z, s);
+      if (k === STAR) {
+        // kind 3: its pole and turning meridian place the spots and the granulation; its light is set by setSunLight
+        const sp = tmp2.copy(this.sun.pole).applyMatrix3(ItoL), sm = tmp3.copy(this.sun.mer).applyMatrix3(ItoL);
+        U.uBL.value[n].set(0, 0, 0, 3);
+        U.uBP.value[n].set(sp.x, sp.y, sp.z, 0);
+        U.uBM.value[n].set(sm.x, sm.y, sm.z, 0);
+        U.uBT.value[n].copy(this.sunRad);
+        U.uBA.value[n].set(0, 0, 0, -1);
+        this.starSlot = n++;
+        continue;
+      }
       // sunlight at the body (softened inverse square), dimmed when its parent eclipses it
       const toSun = tmp2.copy(b.pos).negate(), rs = toSun.length();
       let light = Math.pow(AU / rs, 1.2);
@@ -267,7 +313,7 @@ export class StarSystem {
       U.uBP.value[n].set(pole.x, pole.y, pole.z, L.layer);
       U.uBM.value[n].set(mer.x, mer.y, mer.z, L.shine ?? 0);
       // through Solenne's air: reddened and dimmed toward the horizon
-      const col = airColumn(alt, rel.y);
+      const col = k === SOLENNE ? 0 : airColumn(alt, rel.y);   // (Solenne's own air is in its shading, not in the way)
       U.uBT.value[n].set(SUN_SPACE[0] * light * Math.exp(-EXT[0] * col), SUN_SPACE[1] * light * Math.exp(-EXT[1] * col), SUN_SPACE[2] * light * Math.exp(-EXT[2] * col), L.haze?.[3] ?? 0);
       U.uBA.value[n].set(L.haze?.[0] ?? 0, L.haze?.[1] ?? 0, L.haze?.[2] ?? 0, L.ring ? L.ring[2] : -1);
       U.uBR.value[n].set(L.ring?.[0] ?? 0, L.ring?.[1] ?? 0, L.ring?.[3] ?? 0, (L.relief ?? 0) * MAP_RANGE[L.layer]);
@@ -277,7 +323,7 @@ export class StarSystem {
         U.uOccL.value.set(rel.x, rel.y, rel.z, ang);
         // eclipse: Lull over the sun's disc
         const sep = Math.acos(Math.min(1, rel.x * sunL.x + rel.y * sunL.y + rel.z * sunL.z));
-        this.eclipse = 1 - discOverlap(SUN_ANG, ang, sep);
+        this.eclipse = 1 - discOverlap(sunAng, ang, sep);
         U.uSunL.value.w = this.eclipse;
         // moonlight: lit fraction toward us, height in the sky, air in the way
         const lit = 0.5 * (1 - (toSun.x * rel.x + toSun.y * rel.y + toSun.z * rel.z));

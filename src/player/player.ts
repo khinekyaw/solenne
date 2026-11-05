@@ -76,6 +76,11 @@ export class Player {
     this.frameAt(); this.syncFlat();
   }
   private setAltitude(h: number) { this.pos.setLength(PLANET_R + h); this.syncFlat(); }
+  /** put the eye somewhere (the pilot's seat), keeping the frame and the flat coordinates in step */
+  place(p: THREE.Vector3) {
+    this.pos.copy(p); this.frameAt(); this.syncFlat(); this.vel.set(0, 0, 0);
+    this.agl = this.pos.length() - PLANET_R - this.groundAt(this.pos, false);
+  }
 
   update(dt: number) {
     const kx = (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0) + touchMove.x;

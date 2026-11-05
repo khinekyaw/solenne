@@ -446,21 +446,33 @@ def fin_panels(rng, nh=(0.0, 0.34, 0.68, 0.97)):
 
 
 # =================== trim, glass frames, portholes, lights ===================
-def canopy_path(step=0.12):
-    """the canopy's edge on the hull: up the starboard side line, along the parabola, down the port side line"""
-    pts = []
-    z = ZN - 0.03
-    while z > canopyZ(THG):
-        pts.append((z, -THG))
-        z -= step
+BOSS = 0.36   # the brass boss on the nose: every bar and both side rims end under its edge
+
+
+def z_at_radius(th, rho):
+    """the station near the nose where the hull, at angle th, is rho from the nose's axis"""
+    lo, hi = 9.0, ZN
+    for _ in range(40):
+        m = (lo + hi) / 2
+        p = hullPoint(m, th)
+        lo, hi = (m, hi) if math.hypot(p[0], p[1] - hullYc(m)) > rho else (lo, m)
+    return lo
+
+
+def nose_run(z0, z1, n):
+    """stations from z0 to z1 evenly spaced round the nose's curve (even steps in z bunch up near the tip)"""
+    f = lambda z: math.asin(min(max((z - 5) / (ZN - 5), -1.0), 1.0))
+    a, b = f(z0), f(z1)
+    return [5 + (ZN - 5) * math.sin(a + (b - a) * k / n) for k in range(n + 1)]
+
+
+def canopy_path():
+    """the canopy's edge on the hull: up the starboard side line from the boss, along the parabola, back to the boss"""
+    side = nose_run(z_at_radius(THG, BOSS - 0.06), canopyZ(THG), 22)
+    pts = [(z, -THG) for z in side]
     n = 60
-    for k in range(n + 1):
-        th = -THG + 2 * THG * k / n
-        pts.append((canopyZ(th), th))
-    z = canopyZ(THG) + step
-    while z < ZN - 0.03:
-        pts.append((z, THG))
-        z += step
+    pts += [(canopyZ(-THG + 2 * THG * k / n), -THG + 2 * THG * k / n) for k in range(1, n)]
+    pts += [(z, THG) for z in side[::-1]]
     return pts
 
 
@@ -488,12 +500,14 @@ def canopy_trim(direct, rv):
     for th in (-1.2, -0.6, 0.0, 0.6, 1.2):   # bars from the edge forward to the last arch
         n = 24
         run([(zs(ARCH[-1] * k / n, th), th) for k in range(n + 1)])
-    for th in (-0.9, 0.0, 0.9):              # three carry on to the nose
-        n = 14
-        run([(zs(ARCH[-1] + (0.985 - ARCH[-1]) * k / n, th), th) for k in range(n + 1)])
+    for th in (-0.9, 0.0, 0.9):              # three carry on into the boss on the nose
+        run([(z, th) for z in nose_run(zs(ARCH[-1], th), z_at_radius(th, BOSS - 0.06), 16)])
     tip = V(*hullPoint(ZN, 0))
-    lathe(direct, [(0.3, -0.05), (0.31, 0.03), (0.25, 0.1), (0.12, 0.15), (0, 0.16)], 24,
-          basis(tip - V(0, 0, 0.06), V(0, 0, 1)), WHITE, M_BRASS)
+    lathe(direct, [(BOSS + 0.06, -0.1), (BOSS + 0.07, 0.0), (BOSS + 0.02, 0.07), (BOSS - 0.06, 0.12), (0.2, 0.17), (0, 0.19)], 28,
+          basis(tip - V(0, 0, 0.04), V(0, 0, 1)), WHITE, M_BRASS)
+    for k in range(8):   # bolts round the boss
+        a = 2 * math.pi * (k + 0.5) / 8
+        dome_rivet(direct, tip + V((BOSS - 0.01) * math.cos(a), (BOSS - 0.01) * math.sin(a), 0.07), V(0, 0, 1), 0.024, WHITE, M_BRASS, 6)
     # lip: from the skin down to the inner shell along the edge, so the opening has a thickness
     lip = MB()
     rows = [[V(*hullPoint(z, th)) for z, th in path], [V(*hullPoint(z, th, HULL['thick'])) for z, th in path]]

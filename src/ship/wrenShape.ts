@@ -47,8 +47,8 @@ export function bellyAt(x: number, z: number) {
 /* ---- openings in the skin (the shaders cut them with the same tests) ---- */
 export const GLASS = { z0: 6.6, k: 3.5, th: 1.75 };   // the many-paned nose canopy: upper front of the nose
 export const glassAt = (z: number, th: number) => Math.abs(th) < GLASS.th && z > GLASS.z0 + GLASS.k * (Math.abs(th) / GLASS.th) ** 2;
-export const DOOR = { z0: -0.1, z1: 1.7, y0: 2.5, yArc: 4.0 };   // arched side door, port, into the cargo hold
-export const doorTop = (z: number) => DOOR.yArc + Math.sqrt(Math.max(0, 0.81 - (z - 0.8) ** 2));
+export const DOOR = { z0: -0.1, z1: 1.7, y0: 2.5, y1: 4.9, r: 0.32 };   // side doorway, port, into the cargo hold: the concept's rounded rectangle
+export const doorTop = (z: number) => { const dz = Math.max(Math.abs(z - 0.8) - (0.9 - DOOR.r), 0); return DOOR.y1 - DOOR.r + Math.sqrt(Math.max(0, DOOR.r * DOOR.r - dz * dz)); };
 export const DOME = { z: -5.0, r: 2.6, base: 10.3, hScale: 0.85, hole: 2.45, floor: 10.0 };
 
 /* ---- inside: two decks (ship-local heights) ---- */
@@ -73,7 +73,11 @@ export const WALLS: Wall[] = [
   { z: -1.8, deck: 'lower', door: [0.3, 1.5] },    // cargo hold | engine room
   { z: -5.6, deck: 'lower' },                      // rear of the engine room
 ];
-export const RAMP = { x0: 2.95, len: 5.4, z0: -0.05, z1: 1.65 };
+// the ramp is the door (art/wren): hinged on the sill at the inner shell, a foot section folds onto it and the two swing
+// up to seal the doorway (closed: CLOSED rad above level about the hinge, z axis); x0, len: the walking surface
+export const RAMP = { x0: 2.5063, len: 5.717, z0: 0.05, z1: 1.55, closed: 0.925 };
 export const LEGS: [number, number][] = [[3.4, 5.6], [-3.4, 5.6], [3.6, -5.0], [-3.6, -5.0]];   // foot x, z
+export const POD = { x: 7.2, y: 3.2, z0: -5.0, z1: -0.35, r: 1.25 };   // engine pods under the wings (the model's)
+export const THRUSTER_Z = HULL.zTail - 0.5;                             // the tail thruster's glowing core
 /** inner half-width of a deck floor (where it meets the inner shell) */
 export const floorHalf = (y: number, z: number) => halfWidthAt(y, z, HULL.thick);

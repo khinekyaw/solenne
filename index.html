@@ -29,7 +29,10 @@
       <dt><kbd>Esc</kbd></dt><dd>Release the mouse</dd>
     </dl>
     <p class="lede touch-only">Drag on the left side to walk and on the right side to look around.</p>
-    <button class="enter" id="enter" disabled>Waking Solenne…</button>
+    <div class="actions">
+      <button class="enter" id="enter" disabled>Waking Solenne…</button>
+      <button class="enter ghost" id="showBtn" disabled>Watch the showcase</button>
+    </div>
     <p class="note" id="note">Sound starts when you step outside; headphones recommended. Lower the quality in Settings if it stutters.</p>
   </div>
 </div>
@@ -61,6 +64,10 @@
       <button data-wx="storm" aria-pressed="false">Storm</button>
       <button data-wx="fog" aria-pressed="false">Fog</button>
     </div>
+  </div>
+  <div class="row">
+    <div class="row-head"><label class="label" for="clouds">Clouds</label><span class="val" id="cloudsVal">Scattered</span></div>
+    <input type="range" id="clouds" min="0" max="100" step="1" value="50">
   </div>
   <p class="group">Time</p>
   <div class="row">
@@ -112,6 +119,24 @@
     </div>
     <select class="select" id="voiceSel" aria-label="Voice for Halden"></select>
   </div>
+  <p class="group">Showcase</p>
+  <div class="row">
+    <div class="row-head"><span class="label" id="musicLabel">Music</span><span class="val" id="musicVal">On</span></div>
+    <div class="seg seg2" id="musicSeg" role="group" aria-labelledby="musicLabel">
+      <button data-music="on" aria-pressed="true">On</button>
+      <button data-music="off" aria-pressed="false">Off</button>
+    </div>
+  </div>
+  <div class="row">
+    <div class="row-head"><span class="label">Video</span><span class="val">1080p · 60 fps · MP4</span></div>
+    <div class="seg seg2" id="xdSeg" role="group" aria-label="Export detail">
+      <button data-xd="cinema" aria-pressed="true">Cinema detail</button>
+      <button data-xd="standard" aria-pressed="false">Standard</button>
+    </div>
+    <button class="enter ghost small" id="exportBtn" disabled>Export the showcase</button>
+    <p class="note">Renders every frame, however long it takes, then downloads the file. Cinema detail draws each
+      frame at twice the size with more detail (about 30–45 minutes); Standard takes about 10. Video only. Esc cancels.</p>
+  </div>
   <p class="group">Rendering</p>
   <div class="row">
     <span class="label" id="qLabel">Quality</span>
@@ -133,6 +158,16 @@
 </div>
 
 <div class="prompt" id="prompt" hidden><kbd>E</kbd> Look through the telescope</div>
+<div class="helm" id="helm" hidden>
+  <div class="helm-read" id="helmRead" aria-live="off">—</div>
+  <div class="scope-bar helm-keys">
+    <span><kbd>W</kbd><kbd>S</kbd> throttle</span><span>Mouse · <kbd>A</kbd><kbd>D</kbd> steer</span><span><kbd>Q</kbd><kbd>R</kbd> roll</span>
+    <span><kbd>Space</kbd><kbd>C</kbd> up · down</span><span><kbd>Shift</kbd> boost</span><span><kbd>X</kbd> all stop</span>
+    <span><kbd>L</kbd> land</span><span><kbd>Z</kbd> assist</span><span><kbd>V</kbd> view</span>
+    <span><kbd>J</kbd> cruise</span><span><kbd>T</kbd> target</span><span><kbd>G</kbd> autopilot</span><span><kbd>M</kbd> map</span><span><kbd>[</kbd><kbd>]</kbd> warp</span><span><kbd>E</kbd> leave</span>
+  </div>
+</div>
+<div class="nav-mark" id="navMark" hidden aria-hidden="true"><i id="navArrow"></i><span id="navLabel"></span></div>
 <div class="scope" id="scope" hidden>
   <div class="scope-circles" id="scopeCircles" aria-label="Where the telescope points">Alt 0° · Az 0° N</div>
   <div class="scope-guide" id="scopeGuide" aria-label="Sky guide"></div>
@@ -144,7 +179,7 @@
   </div>
   <div class="scope-bar">
     <span class="mode">Telescope</span><span class="clock" id="scopeMag">×17</span>
-    <span class="desk-only">Mouse or arrows to aim · <kbd>Shift</kbd> faster · scroll to zoom · <kbd>1</kbd>–<kbd>8</kbd> go to · <kbd>E</kbd> step back</span>
+    <span class="desk-only">Mouse or arrows to aim · <kbd>Shift</kbd> faster · scroll to zoom · <kbd>1</kbd>–<kbd>8</kbd> go to · <kbd>H</kbd> solar filter · <kbd>E</kbd> step back</span>
   </div>
 </div>
 <div class="you" id="youMark" hidden aria-hidden="true"><i></i><span>You</span></div>
@@ -164,5 +199,6 @@
 </div>
 
 <script type="module" src="/src/main.ts"></script>
+<div id="exportNote" hidden>Exporting the showcase · <span id="exportPct">0%</span> · Esc cancels</div>
 </body>
 </html>

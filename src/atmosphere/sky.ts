@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { clamp, smoothstep } from '../core/math';
 import { shared, frame } from '../render/frame';
 import { CLOUD_VS, CLOUD_FS, BG_VS, BG_FS } from './skyShaders';
-import { PLANET_R, type Quality } from '../config';
+import { PLANET_R, FAR_SOL, type Quality } from '../config';
 
 /* =========================================================================
    Sky + clouds pass: raymarched into a half-float target at reduced
@@ -35,12 +35,13 @@ export class Sky {
     this.mat = new THREE.ShaderMaterial({
       vertexShader: CLOUD_VS, fragmentShader: CLOUD_FS, depthTest: false, depthWrite: false, glslVersion: THREE.GLSL3,
       uniforms: {
-        ...shared, uOccL: far.uniforms.uOccL, uHistoryVis: { value: null },
+        ...shared, uHistoryVis: { value: null },
         uShape: { value: tex.shape }, uDetail: { value: tex.detail }, uTerrain: { value: tex.terrain },
         uInvProj: { value: new THREE.Matrix4() }, uCamWorld: { value: new THREE.Matrix4() },
         uSteps: { value: 96 }, uStepK: { value: 0.022 },
         uHistory: { value: null }, uPrevVP: { value: new THREE.Matrix4() }, uBlend: { value: 1 }, uFrame: { value: 0 },
         uRegionL: { value: new THREE.Vector3() }, uRegionUpL: { value: new THREE.Vector3(0, 1, 0) }, uShellK: { value: 0 }, uFlatK: { value: 1 }, uDbg: { value: 7 },
+        uSpace: { value: 0 },   // 1: far from Solenne, nothing to march (its air and clouds are drawn by the far pass)
       },
     });
     const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.mat);
@@ -49,9 +50,10 @@ export class Sky {
     this.bgMat = new THREE.ShaderMaterial({
       vertexShader: BG_VS, fragmentShader: BG_FS, depthTest: false, depthWrite: false,
       uniforms: {
-        ...far.uniforms, uBodyTex: { value: far.maps }, uRingTex: { value: far.rings }, uPxAng: { value: 0.001 }, uTime: shared.uTime,
+        ...far.uniforms, uBodyTex: { value: far.maps }, uRingTex: { value: far.rings }, uPxAng: { value: 0.001 }, uDot: { value: 1 }, uTime: shared.uTime,
         uBg: { value: this.rts[0].texture[0] }, uVis: { value: this.rts[0].texture[1] }, uRes: { value: new THREE.Vector2(1, 1) },
         uInvProj: this.mat.uniforms.uInvProj, uCamWorld: this.mat.uniforms.uCamWorld, uLtoStar: { value: new THREE.Matrix3() },
+        uLand: shared.uLand, uLtoPF: shared.uLtoPF,
       },
     });
     this.bg = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.bgMat);
@@ -75,6 +77,7 @@ export class Sky {
     u.uRegionUpL.value.set(0, 1, 0).applyMatrix3(frame.PFtoL);
     u.uShellK.value = smoothstep(1800, 4500, frame.alt);
     u.uFlatK.value = 1 - smoothstep(600, 3000, frame.alt);
+    u.uSpace.value = frame.alt + PLANET_R > FAR_SOL ? 1 : 0;
     this.bgMat.uniforms.uLtoStar.value.multiplyMatrices(skyRotPF, frame.LtoPF);
     this.bgMat.uniforms.uPxAng.value = 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) / this.bgMat.uniforms.uRes.value.y;
 

@@ -39,6 +39,27 @@ varying vec3 vFlat;
 varying vec3 vN;
 varying vec4 vInfo;
 
+// the film's cinema detail on one face of a cliff, seen flat: along the wall (x) and up it (y)
+vec3 cliffFace(vec3 rock, vec2 p) {
+  float ly = p.y / 5.5 + texture(uWeather, vec2(p.x / 90.0, 0.31)).r * 0.8;   // a ledge every few metres, gently tilted
+  float f = fract(ly), id = floor(ly);
+  rock *= 0.8 + 0.32 * smoothstep(0.0, 0.9, f);   // each bed rounded: lit along its top, darker at its foot
+  rock *= 0.88 + 0.24 * texture(uWeather, vec2(p.y / 1.3, p.x / 40.0)).g;   // fine bedding inside the beds
+  // vertical joints break the beds into blocks
+  float j = texture(uWeather, vec2(p.x / 13.0 + id * 0.29, p.y / 140.0)).a;
+  rock *= 1.0 - 0.5 * (1.0 - smoothstep(0.008, 0.035, abs(j - 0.5)));
+  // the seam under each ledge in shadow, and moss holding on the ledge where it runs out far enough
+  rock *= 1.0 - 0.55 * (1.0 - smoothstep(0.0, 0.07, f));
+  float shelf = smoothstep(0.4, 0.62, texture(uWeather, vec2(p.x / 26.0, id * 0.137)).g);
+  vec3 moss = vec3(0.07, 0.15, 0.06) * (0.8 + 0.4 * texture(uWeather, p / 3.0).b);
+  rock = mix(rock, moss, smoothstep(0.88, 0.97, f) * shelf * 0.85);
+  // dark rain stains running down from the rim, a little green
+  float stain = smoothstep(0.5, 0.8, texture(uWeather, vec2(p.x / 7.0, p.y / 260.0)).b);
+  rock = mix(rock, rock * vec3(0.55, 0.62, 0.52), stain * 0.7);
+  // pale lichen
+  return mix(rock, vec3(0.36, 0.36, 0.3), smoothstep(0.74, 0.92, texture(uWeather, p / 2.7 + 0.4).a) * 0.35);
+}
+
 void main() {
   vec3 N = normalize(vN);
   float dist = length(vRel);
@@ -82,8 +103,16 @@ void main() {
   float fl2 = texture(uWeather, sx * vec2(0.7, 1.9) / 1.3 + 0.5).a;
   float flecks = smoothstep(0.7, 0.93, fl1) * 0.6 + smoothstep(0.74, 0.95, fl2) * 0.5;
   float dark = smoothstep(0.62, 0.9, texture(uWeather, sx * vec2(0.6, 1.4) / 2.1 + 0.3).b);
-  float fade = 1.0 - smoothstep(40.0, 260.0, dist);
+  float fade = 1.0 - smoothstep(40.0 + 700.0 * uCine, 260.0 + 1500.0 * uCine, dist);   // the film resolves them much further out
   avgGrass *= 1.0 + (flecks * vec3(0.55, 0.6, 0.35) - dark * 0.22) * mix(0.35, 1.0, fade);
+  if (uCine > 0.0) {
+    // cinema detail: tussocks, and wildflowers dotted in drifts beyond the near flowers
+    avgGrass *= 0.88 + 0.24 * texture(uWeather, W.xz / 6.0 + 0.17).r;
+    float drift = smoothstep(0.58, 0.82, texture(uWeather, W.xz / 140.0 + 0.4).g) * smoothstep(60.0, 160.0, dist);
+    float fd = smoothstep(0.8, 0.95, texture(uWeather, W.xz / 1.9 + 0.9).a) * drift;
+    vec3 fc = mix(vec3(0.6, 0.58, 0.5), vec3(0.62, 0.5, 0.18), step(0.5, texture(uWeather, W.xz / 33.0).r));
+    avgGrass = mix(avgGrass, fc * 0.5, fd * 0.5);
+  }
   avgGrass *= 1.0 - 0.25 * uWet;
   // the same lush/short swathes as the blades: short turf reads lighter and warmer from afar
   float lush = meadowLush(W.xz);
@@ -113,6 +142,7 @@ void main() {
   vec3 rock = mix(vec3(0.11, 0.108, 0.105), vec3(0.27, 0.265, 0.26), clamp(blocks * 0.8 + strata * 0.4 - 0.1, 0.0, 1.0));
   rock *= 0.55 + 0.6 * smoothstep(0.2, 0.8, bands);
   rock *= mix(0.55, 1.0, smoothstep(SEA_TOP - 30.0, 10.0, W.y));
+  if (uCine > 0.0 && rockK > 0.01) rock = cliffFace(rock, vec2(W.z, W.y)) * wN.x + cliffFace(rock, vec2(W.x, W.y)) * wN.y;
   vec3 alb = mix(grass, rock, rockK);
   // pale sand along the waterline, darkening to silt on the bed
   float beach = 1.0 - smoothstep(WATER + 1.2, WATER + 3.8, W.y);

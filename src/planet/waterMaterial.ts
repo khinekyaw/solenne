@@ -69,7 +69,7 @@ void main() {
   vec3 east = normalize(cross(up, vec3(0.0, 0.0, 1.0))), north = cross(east, up);
   vec3 N = normalize(up - (east * g.x + north * g.y) * amp * 3.0);
 
-  float fres = 0.02 + 0.98 * pow(1.0 - max(dot(N, V), 0.0), 5.0);
+  float fres = 0.02 + 0.98 * pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 5.0);
   vec3 R = reflect(-V, N);
   float ry = dot(R, up);
   vec3 sky = mix(hor, zen, pow(clamp(ry, 0.0, 1.0), 0.42));

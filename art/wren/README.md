@@ -1,19 +1,19 @@
 # The Wren in Blender (exterior)
 
 A detailed, game-ready exterior of the Wren, built entirely from Python in Blender 5.2 (no hand
-modelling, so it is reproducible and diffable). **Not imported into the game yet**: the game still
-draws the code-built Wren from `src/ship/`.
+modelling, so it is reproducible and diffable). **The game draws it** (`src/ship/wrenModel.ts`): a final build
+(no `--quick`/`--no-bake`) copies the GLB to `public/models/wren.glb`. The interior stays code-built.
 
 ```bash
 /Applications/Blender.app/Contents/MacOS/Blender -b --factory-startup --python art/wren/build_wren.py
 /Applications/Blender.app/Contents/MacOS/Blender -b --factory-startup --python art/wren/render_wren.py -- art/wren/out/wren.glb art/wren/renders all cycles
 ```
 
-`--quick` bakes at 1024² (≈ 45 s); the full build bakes at 4096² (≈ 10 min on an M2, the first run
+`--quick` bakes at 2048² (≈ 1.5 min; previews before a final bake); the full build bakes at 4096² (≈ 10 min on an M2, the first run
 adds ≈ 2 min of GPU kernel compile). `--no-bake` exports clay geometry in a few seconds.
 `render_wren.py` renders the GLB the game would load: front/side/back/top on the concept sheet's
 paper, the concept's three-quarter view, a low view at the ramp, starboard, the ship closed for flight,
-and `wren-ramp-fold.mp4` (the ramp folding into the door). The renders add a dark cabin shell and a
+and, with the `fold` view, `wren-ramp-fold.mp4` (the ramp folding into the door, then opening again). The renders add a dark cabin shell and a
 warm lamp inside the skin; neither is in the GLB.
 
 ## Built for the game

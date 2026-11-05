@@ -171,6 +171,8 @@ for v in VIEWS:
         shoot('three', G(23.5, 3.2, 17.0), G(0, 5.6, -0.8), lens=32, sheet=False)
     elif v == 'low':
         shoot('low', G(9.0, 1.7, 9.5), G(1.5, 4.5, -2.5), lens=22, sheet=False)
+    elif v == 'nose':   # quick look at the canopy frame meeting the boss
+        shoot('nose', G(0.9, 4.6, 17.5), G(0, 5.9, 12.4), lens=55, res=(1100, 900), sheet=False)
     elif v == 'flight':
         sc.frame_set(END)
         shoot('flight', G(23.5, 3.2, 17.0), G(0, 5.6, -0.8), lens=32, sheet=False)
@@ -184,6 +186,11 @@ for v in VIEWS:
         cam.location = G(11.5, 2.2, 7.0)
         cam.rotation_euler = (G(2.6, 3.4, 0.4) - cam.location).normalized().to_track_quat('-Z', 'Y').to_euler()
         sc.render.resolution_x, sc.render.resolution_y = 1280, 800
+        try:   # a preview of motion, not a beauty shot: keep it quick
+            sc.eevee.taa_render_samples = 16
+            sc.eevee.use_raytracing = False
+        except Exception:
+            pass
         ground.hide_render, sc.render.film_transparent = False, False
         sc.frame_start, sc.frame_end = 1, END + 15
         try:

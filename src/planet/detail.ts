@@ -50,6 +50,8 @@ export class Detail {
       }
     });
   }
+  /** a new region is being built by the worker */
+  get busy() { return this.pending; }
   get isSpawn() { return this.face === SPAWN_FACE && this.cx === 0 && this.cz === 0; }
   /** the camera is inside the region's grid (with a margin) */
   get covers() { return Math.max(Math.abs(this.camFlat.x - this.cx), Math.abs(this.camFlat.z - this.cz)) < HALF - 120; }

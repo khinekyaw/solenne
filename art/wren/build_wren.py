@@ -34,7 +34,8 @@ import wren_paint as PT  # noqa: E402
 ARGS = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
 QUICK = '--quick' in ARGS
 BAKE = '--no-bake' not in ARGS
-RES = 1024 if QUICK else 4096
+PROBE = next((tuple(map(float, a.split('=')[1].split(','))) for a in ARGS if a.startswith('--probe=')), None)   # debug: a texel to watch
+RES = 2048 if QUICK else 4096   # (at 1024 the thinnest brass bars are only a few texels and can miss the bake)
 MARGIN = max(4, RES // 256)
 OUT = os.path.join(HERE, 'out')
 TEX = os.path.join(OUT, 'textures')
@@ -100,6 +101,21 @@ def pivoted(mb, name, mats, pivot, coll_, sharp=None):
     return ob
 
 
+def remove_cutter_walls(ob):
+    """the boolean treats the open skin as a solid and keeps the cutters' walls inside it: a black tunnel 1.5 m
+    into the cabin behind the doorway and a drum and disc under the dome. Drop every face touching the
+    cutters' inner ends (the door prism's x = 2.2 face, the dome cylinder's y = 9 floor)"""
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    junk = [f for f in bm.faces if
+            (any(abs(v.co.x - 2.2) < 1e-3 for v in f.verts) and all(-0.2 < -v.co.y < 1.8 and 2.4 < v.co.z < 5.0 for v in f.verts)) or
+            (any(abs(v.co.z - 9.0) < 1e-3 for v in f.verts) and all(math.hypot(v.co.x, -v.co.y - WS.DOME['z']) < WS.DOME['hole'] + 0.01 for v in f.verts))]
+    bmesh.ops.delete(bm, geom=junk, context='FACES')
+    bm.to_mesh(ob.data)
+    bm.free()
+    return len(junk)
+
+
 def tris(ob):
     return sum(len(p.vertices) - 2 for p in ob.data.polygons)
 
@@ -127,6 +143,7 @@ for mb_, nm in ((door_mb, 'CutDoor'), (dome_mb, 'CutDome')):
     evaluate(hull)
     c.hide_render = True
     c.hide_set(True)
+remove_cutter_walls(hull)
 
 log('panelled surfaces and plates')
 plates, rivets = WM.MB(), WM.MB()
@@ -307,6 +324,16 @@ for o in atlas + [glass] + glows + leg_glows:
     bm.to_mesh(o.data)
     bm.free()
 
+if PROBE:   # debug: who owns the probed texel
+    from mathutils.geometry import intersect_point_tri_2d
+    pv = Vector(PROBE)
+    for o in atlas:
+        uvl = o.data.uv_layers.active.data
+        for f in o.data.polygons:
+            t = [uvl[i].uv for i in f.loop_indices]
+            if len(t) == 3 and intersect_point_tri_2d(pv, t[0], t[1], t[2]):
+                log('    texel owner', o.name, 'face', f.index, 'centre(game)', [round(x, 2) for x in (f.center.x, f.center.z, -f.center.y)], 'mat', o.data.materials[f.material_index].name)
+
 # =================== bake ===================
 for o in (src_skin, src_rivets, src_name):
     o.hide_render = False
@@ -357,6 +384,11 @@ if BAKE:
         t = time.time()
         bpy.ops.object.bake(type=kind, use_selected_to_active=bool(sources), cage_extrusion=0.035, max_ray_distance=0.07,
                             margin=MARGIN, margin_type='EXTEND', use_clear=clear, normal_space='TANGENT', target='IMAGE_TEXTURES')
+        if PROBE:
+            im = bpy.data.materials['src_brass'].node_tree.nodes['BAKE'].image
+            u, v = PROBE
+            i = (int(v * RES) * RES + int(u * RES)) * 4
+            log('    probe', im.name, [round(x, 3) for x in im.pixels[i:i + 3]])
         log(f'  {kind:7s} {"from plates" if sources else "direct":11s} {time.time() - t:5.1f}s')
 
     direct_parts = [fit, ramp, foot] + legs
@@ -481,7 +513,15 @@ bpy.ops.export_scene.gltf(filepath=glb, export_format='GLB', use_selection=True,
                           export_tangents=True, export_extras=True, export_image_format='WEBP', export_image_quality=90,
                           export_cameras=False, export_lights=False, export_animations=True, export_animation_mode='SCENE',
                           export_frame_range=True, export_force_sampling=True)
+import gltf_post  # noqa: E402
+log('animations', gltf_post.merge_animations(glb))   # one clip for the ramp and its foot
 log('exported', glb, f'{os.path.getsize(glb) / 1e6:.1f} MB')
+import shutil  # noqa: E402
+if not QUICK and BAKE:   # the game loads it from public/models (a final bake only)
+    pub = os.path.join(HERE, '..', '..', 'public', 'models')
+    os.makedirs(pub, exist_ok=True)
+    shutil.copy(glb, os.path.join(pub, 'wren.glb'))
+    log('copied to public/models/wren.glb')
 bpy.ops.wm.save_as_mainfile(filepath=os.path.join(OUT, 'wren.blend'))
 try:
     bpy.ops.file.make_paths_relative()

@@ -126,8 +126,8 @@ export class Telescope {
     this.active = true; this.mesh.visible = false; this.idle = 1;   // hands are off the mouse until it moves
     this.point(this.aimL(new THREE.Vector3()));
   }
-  /** swing straight to a direction in the local frame */
-  point(d: THREE.Vector3) { this.yaw = this.tYaw = Math.atan2(-d.x, -d.z); this.pitch = this.tPitch = Math.asin(clamp(d.y, -1, 1)); }
+  /** swing straight to a direction in the local frame (like a hand on the tube: the drive lets go, then holds the new spot) */
+  point(d: THREE.Vector3) { this.yaw = this.tYaw = Math.atan2(-d.x, -d.z); this.pitch = this.tPitch = Math.asin(clamp(d.y, -1, 1)); this.idle = 0; }
   leave() { this.active = false; this.mesh.visible = true; this.cottage.shadowDirty = true; }
   look(dx: number, dy: number, s = 0.0022) {
     const k = s / this.magnification;   // the same hand movement crosses the same share of the view at any zoom
