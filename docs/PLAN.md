@@ -432,6 +432,8 @@ A short film of the current world in the game's own renderer, peaceful and paint
 - [x] New defaults (user request, 2026-11-05): grass density 20 and height 40 (the sliders' minimum), Clouds 40;
       settings v3 resets those three in older saves. Verified in the browser: a v2 save with Clouds 100 loads as
       40 / 63k blades / ≈ 17 cm, no console errors
+- [x] Default volume 40 % (user request, 2026-11-05; was 70): settings v4 resets it once in older saves.
+      Verified: a v3 save at 70 % with grass density 100 loads as 40 % and keeps the 100
 - [ ] Rivers that flow downhill (sloped water surface, currents) instead of sea-level valleys
 - [ ] Waterfalls on other highlands; spray mist where they land; water reflections of terrain
 - [ ] Underwater view (diving) and wet footsteps

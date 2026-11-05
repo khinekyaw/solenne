@@ -2,8 +2,8 @@ import { QUALITY, isTouch } from './config';
 
 export type WeatherMode = 'dynamic' | 'sunny' | 'cloudy' | 'rain' | 'storm' | 'fog';
 export const settings = {
-  v: 3,
-  wind: 55, grassDensity: 20, grassHeight: 40, natureVol: 70, muted: false,
+  v: 4,
+  wind: 55, grassDensity: 20, grassHeight: 40, natureVol: 40, muted: false,
   weather: 'dynamic' as WeatherMode,
   clouds: 40,         // cloud amount: 0 clear, 50 the old default sky, 100 the prototype's towering cumulus
   quality: isTouch ? 'low' : 'medium',
@@ -19,8 +19,11 @@ const STORE_KEY = 'solenne-settings-v1';
 try {
   const saved = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
   if (saved && typeof saved === 'object') {
-    // v3 lowered the grass defaults to the sliders' minimum and the clouds to 40: older saves keep everything else
-    if (saved.v !== 3) { delete saved.grassDensity; delete saved.grassHeight; delete saved.clouds; saved.v = 3; }
+    // newer defaults reset once in older saves (v3: grass at the sliders' minimum, clouds 40; v4: volume 40 %); the rest is kept
+    const v = typeof saved.v === 'number' ? saved.v : 0;
+    if (v < 3) { delete saved.grassDensity; delete saved.grassHeight; delete saved.clouds; }
+    if (v < 4) delete saved.natureVol;
+    saved.v = 4;
     const s = settings as Record<string, unknown>;
     for (const k of Object.keys(settings)) if (k in saved && typeof saved[k] === typeof s[k]) s[k] = saved[k];
   }
